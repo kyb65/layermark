@@ -74,16 +74,36 @@ function extractDomPlainText(container: HTMLElement): string {
 
 function isDuplicateAnnotation(doc: LmmDocument, annotation: Annotation): boolean {
   if (annotation.type === "connection") return false;
+
   return doc.annotations.some((existing) => {
+    // Must be same type and same target anchor
     if (existing.type !== annotation.type) return false;
     if (!("target" in existing) || !("target" in annotation)) return false;
     if (existing.target !== annotation.target) return false;
-    // For typed annotations, also check style/color identity
-    const e = existing as unknown as Record<string, unknown>;
-    const n = annotation as unknown as Record<string, unknown>;
-    if ("style" in e || "style" in n) return e["style"] === n["style"];
-    if ("color" in e || "color" in n) return e["color"] === n["color"];
-    return true;
+
+    // Type-specific identity check
+    switch (annotation.type) {
+      case "highlight":
+        return (existing as typeof annotation).color === annotation.color;
+      case "underline":
+        // style defaults to "single" when omitted
+        return (
+          ((existing as typeof annotation).style ?? "single") ===
+          (annotation.style ?? "single")
+        );
+      case "bracket":
+        return (existing as typeof annotation).style === annotation.style;
+      case "box":
+        return (
+          ((existing as typeof annotation).style ?? "rectangle") ===
+          (annotation.style ?? "rectangle")
+        );
+      case "note":
+        // Only one note per anchor (floating or not — same slot)
+        return true;
+      default:
+        return true;
+    }
   });
 }
 
