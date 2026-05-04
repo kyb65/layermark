@@ -1,0 +1,337 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://layermark.io/lmm.schema.json",
+  "title": "LayerMark Memo Layer (.lmm)",
+  "description": "Schema for the LayerMark memo layer file format v1.0",
+  "type": "object",
+  "required": [
+    "layermark",
+    "anchors",
+    "annotations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "layermark": {
+      "description": "Format version. Must be '1.0'.",
+      "type": "string",
+      "const": "1.0"
+    },
+    "anchors": {
+      "description": "List of anchors. Each anchor points to a specific text range in content.lm.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Anchor"
+      }
+    },
+    "annotations": {
+      "description": "List of annotations. Multiple annotations can target the same anchor simultaneously.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Annotation"
+      }
+    }
+  },
+  "$defs": {
+    "Anchor": {
+      "type": "object",
+      "required": [
+        "id",
+        "exact",
+        "prefix",
+        "suffix",
+        "position"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Unique ID. Min 4 chars. Apps SHOULD generate 8-char IDs (e.g. 'a1f3b2e9').",
+          "type": "string",
+          "pattern": "^[a-z0-9]{8}$"
+        },
+        "exact": {
+          "description": "The exact text selected by the user.",
+          "type": "string",
+          "minLength": 1
+        },
+        "prefix": {
+          "description": "Up to 64 chars before 'exact'. Apps use 32 by default, extend to 64 on duplicate detection.",
+          "type": "string",
+          "maxLength": 64
+        },
+        "suffix": {
+          "description": "Up to 64 chars after 'exact'. Apps use 32 by default, extend to 64 on duplicate detection.",
+          "type": "string",
+          "maxLength": 64
+        },
+        "position": {
+          "description": "Unicode code point offset in content.lm plain text. Fallback only. NOT bytes, NOT UTF-16 code units.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "Annotation": {
+      "description": "One visual or relational mark. A single anchor may have multiple annotations simultaneously.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Underline"
+        },
+        {
+          "$ref": "#/$defs/Highlight"
+        },
+        {
+          "$ref": "#/$defs/Box"
+        },
+        {
+          "$ref": "#/$defs/Bracket"
+        },
+        {
+          "$ref": "#/$defs/Connection"
+        },
+        {
+          "$ref": "#/$defs/NoteOnAnchor"
+        },
+        {
+          "$ref": "#/$defs/NoteOnConnection"
+        }
+      ]
+    },
+    "Underline": {
+      "description": "A line drawn beneath the target text.",
+      "type": "object",
+      "required": [
+        "type",
+        "target"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "underline"
+        },
+        "target": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "style": {
+          "description": "Visual style of the underline. Defaults to 'single'.",
+          "type": "string",
+          "enum": [
+            "single",
+            "double",
+            "wave",
+            "dashed"
+          ],
+          "default": "single"
+        }
+      }
+    },
+    "Highlight": {
+      "description": "A colored fill or mark over the target text.",
+      "type": "object",
+      "required": [
+        "type",
+        "target",
+        "color"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "highlight"
+        },
+        "target": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "color": {
+          "type": "string",
+          "enum": [
+            "yellow",
+            "green",
+            "pink",
+            "blue"
+          ]
+        },
+        "style": {
+          "description": "Rendering style of the highlight. Defaults to 'fill'.",
+          "type": "string",
+          "enum": [
+            "fill",
+            "check",
+            "underline"
+          ],
+          "default": "fill"
+        }
+      }
+    },
+    "Box": {
+      "description": "A closed shape drawn around the target text.",
+      "type": "object",
+      "required": [
+        "type",
+        "target"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "box"
+        },
+        "target": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "style": {
+          "description": "Shape of the enclosure. Defaults to 'rectangle'.",
+          "type": "string",
+          "enum": [
+            "rectangle",
+            "oval",
+            "triangle"
+          ],
+          "default": "rectangle"
+        }
+      }
+    },
+    "Bracket": {
+      "description": "A bracket symbol placed beside the target text.",
+      "type": "object",
+      "required": [
+        "type",
+        "target",
+        "style"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "bracket"
+        },
+        "target": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "style": {
+          "description": "round()  square[]  curly{}  angle<>  lenticular【】  corner「」  double-corner『』",
+          "type": "string",
+          "enum": [
+            "round",
+            "square",
+            "curly",
+            "angle",
+            "lenticular",
+            "corner",
+            "double-corner"
+          ]
+        }
+      }
+    },
+    "Connection": {
+      "description": "A line or arrow between two nodes (anchors or notes). 1:1 only — use multiple connections for fan-out.",
+      "type": "object",
+      "required": [
+        "type",
+        "from",
+        "to"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Optional. Required only if a note will attach to this connection as a label.",
+          "$ref": "#/$defs/NodeId"
+        },
+        "type": {
+          "type": "string",
+          "const": "connection"
+        },
+        "from": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "to": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "style": {
+          "description": "Line style. Defaults to 'solid'.",
+          "type": "string",
+          "enum": [
+            "solid",
+            "dashed"
+          ],
+          "default": "solid"
+        },
+        "arrow": {
+          "description": "Arrowhead style. Defaults to 'none'.",
+          "type": "string",
+          "enum": [
+            "none",
+            "one-way",
+            "two-way"
+          ],
+          "default": "none"
+        }
+      }
+    },
+    "NodeId": {
+      "description": "A valid anchor, note, or connection ID.",
+      "type": "string",
+      "pattern": "^[a-z0-9]{8}$"
+    },
+    "NoteOnAnchor": {
+      "description": "Note attached to an anchor. floating=false (default) draws a connecting line; floating=true places note near anchor with no line (margin note effect).",
+      "type": "object",
+      "required": [
+        "type",
+        "content",
+        "target"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "type": {
+          "type": "string",
+          "const": "note"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "floating": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "NoteOnConnection": {
+      "description": "Note attached to a connection (line label).",
+      "type": "object",
+      "required": [
+        "type",
+        "content",
+        "connection"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/NodeId"
+        },
+        "type": {
+          "type": "string",
+          "const": "note"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "connection": {
+          "$ref": "#/$defs/NodeId"
+        }
+      }
+    }
+  }
+}

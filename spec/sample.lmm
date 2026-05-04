@@ -1,0 +1,93 @@
+layermark: "1.0"
+
+anchors:
+  - id: "anc00001"
+    exact: "사과"
+    prefix: "오늘 먹은 "
+    suffix: "는 달콤했다"
+    position: 5
+
+  - id: "anc00002"
+    exact: "바나나"
+    prefix: "노란 "
+    suffix: "는 칼륨이"
+    position: 20
+
+  - id: "anc00003"
+    exact: "은"
+    prefix: "이름"
+    suffix: " 철수입니다"
+    position: 35
+
+  - id: "anc00004"
+    exact: "과일"
+    prefix: ""
+    suffix: "은 건강에"
+    position: 50
+
+annotations:
+  - type: underline
+    target: "anc00001"
+    style: single
+
+  - type: underline
+    target: "anc00002"
+    style: wave
+
+  - type: highlight
+    target: "anc00001"
+    color: yellow
+    style: fill
+
+  - type: highlight
+    target: "anc00003"
+    color: pink
+    style: underline
+
+  - type: box
+    target: "anc00004"
+    style: oval
+
+  - type: bracket
+    target: "anc00001"
+    style: corner
+
+  - type: bracket
+    target: "anc00002"
+    style: double-corner
+
+  # NoteOnAnchor: floating=false (기본값, 연결선 있음)
+  - type: note
+    target: "anc00001"
+    content: "핵심 개념. 다음 단원에서 다시 등장."
+
+  # NoteOnAnchor: floating=true (연결선 없음, 여백 메모처럼 보임)
+  - id: "nte00001"
+    type: note
+    target: "anc00004"
+    floating: true
+    content: "전체 요약: 과일은 건강에 좋다."
+
+  - id: "cnn00001"
+    type: connection
+    from: "anc00001"
+    to: "anc00002"
+    style: solid
+    arrow: one-way
+
+  - type: note
+    connection: "cnn00001"
+    content: "둘 다 과일"
+
+  # connection이 floating note를 가리키는 케이스
+  - type: connection
+    from: "anc00001"
+    to: "nte00001"
+    style: dashed
+    arrow: one-way
+
+  - type: connection
+    from: "anc00001"
+    to: "anc00004"
+    style: solid
+    arrow: two-way

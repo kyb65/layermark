@@ -1,0 +1,37 @@
+layermark: "1.0"
+
+anchors:
+  - id: "anc0001"
+    exact: "사과"
+    prefix: "오늘 먹은 "
+    suffix: "는 달콤했다"
+    position: 5
+
+  - id: "anc0001"      # 오류: 중복 anchor ID
+    exact: "바나나"
+    prefix: "노란 "
+    suffix: "는 칼륨이"
+    position: 20
+
+annotations:
+  - type: underline
+    target: "anc9999"  # 오류: 존재하지 않는 anchor
+
+  - type: highlight
+    target: "anc0001"  # 오류: color 없음
+
+  - type: bracket
+    target: "anc0001"  # 오류: style 없음
+
+  - type: connection
+    from: "anc0001"
+    to: "anc0001"      # 오류: 자기 자신을 가리킴
+    arrow: one-way
+
+  - type: note
+    target: "anc0001"
+    connection: "conn001"  # 오류: target과 connection 동시 사용
+    content: "잘못된 노트"
+
+  - type: rainbow      # 오류: 허용되지 않는 type
+    target: "anc0001"
