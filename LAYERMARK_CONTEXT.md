@@ -759,13 +759,24 @@ Claude가 PowerShell MCP를 통해 아래를 자동으로 수행한다:
 ### 프로젝트 경로
 `C:\Users\kybna\layermark`
 
-### Phase별 시작 한 마디
-| Phase | 시작 방법 |
-|-------|-----------|
-| Phase 2 | "phase 2 수행해줘" |
-| Phase 3 | "phase 3 수행해줘" |
-| Phase 4 | "phase 4 수행해줘" |
-| Phase 5 | "phase 5 수행해줘" |
+### Phase별 시작 프롬프트
+
+새 세션에서 아래 문장을 그대로 입력하면 된다.
+
+**Phase 3 시작:**
+```
+phase 3 수행해줘. 프로젝트: C:\Users\kybna\layermark
+```
+
+**Phase 4 시작:**
+```
+phase 4 수행해줘. 프로젝트: C:\Users\kybna\layermark
+```
+
+**Phase 5 시작:**
+```
+phase 5 수행해줘. 프로젝트: C:\Users\kybna\layermark
+```
 
 ### Claude가 세션 시작 시 반드시 수행하는 것
 1. PowerShell MCP로 위 5개 명령 실행해 컨텍스트 파악
