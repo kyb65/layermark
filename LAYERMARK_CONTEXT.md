@@ -725,12 +725,37 @@ Obsidian, Logseq 등이 `.lmm` 포맷을 플러그인으로 지원하는 것이 
 
 ## 15. 다음 세션 시작 방법
 
-새 세션에서 이 문서와 `lmm.schema.json`을 함께 첨부하고 아래 문장으로 시작한다:
+### 시작 방법 (파일 첨부 불필요)
 
-> "LayerMark 프로젝트 Phase 1을 시작하려고 해.
-> LAYERMARK_CONTEXT.md와 lmm.schema.json을 읽고 프로젝트를 파악한 뒤,
-> Tauri 프로젝트 세팅부터 시작해줘.
-> 내 환경은 Windows, Node.js 설치됨, Rust/Cargo 미설치 상태야."
+새 세션에서 아래 한 마디만 하면 된다:
 
-Phase 1 첫 번째 작업: **Rust + Tauri 개발 환경 세팅**
-Windows 기준 설치 순서: Rust 설치 → Visual Studio C++ Build Tools → Tauri CLI → 프로젝트 생성 → 빌드 확인
+> "phase N 수행해줘."
+
+Claude가 PowerShell MCP를 통해 아래를 자동으로 수행한다:
+
+```
+1. git log --oneline                         # 현재까지 커밋 히스토리 파악
+2. Get-Content LAYERMARK_CONTEXT.md          # 전체 설계 결정 및 현재 Phase 파악
+3. Get-Content LAYERMARK_CONTEXT.md의 spec/lmm.schema.json 경로 확인 후 읽기
+4. Get-Content CHANGELOG.md                  # 직전 Phase 완료 내용 파악
+5. git status                                # 미커밋 변경사항 파악
+```
+
+파일을 첨부하거나 별도 설명 없이 바로 작업을 시작할 수 있다.
+
+### 프로젝트 경로
+`C:\Users\kybna\layermark`
+
+### Phase별 시작 한 마디
+| Phase | 시작 방법 |
+|-------|-----------|
+| Phase 2 | "phase 2 수행해줘" |
+| Phase 3 | "phase 3 수행해줘" |
+| Phase 4 | "phase 4 수행해줘" |
+| Phase 5 | "phase 5 수행해줘" |
+
+### Claude가 세션 시작 시 반드시 수행하는 것
+1. PowerShell MCP로 위 5개 명령 실행해 컨텍스트 파악
+2. 현재 Phase 목표와 알려진 한계 확인
+3. 작업 시작 전 간단한 계획 요약 후 진행
+4. 세션 종료 시: CHANGELOG.md 업데이트 → LAYERMARK_CONTEXT.md 상태 표 업데이트 → 커밋
