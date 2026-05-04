@@ -87,6 +87,56 @@ Phase 1: Tauri 개발 환경 세팅 + 마크다운 텍스트 렌더러 + boundin
 ## [Phase 1] — 2025-05 — Tauri 텍스트 렌더러
 
 ### 개요
-[Phase 1 세션에서 완료 후 해당 세션의 Claude가 작성]
+### 개요
+Tauri(Rust + React/TypeScript) 기반 데스크탑 앱을 세팅하고,
+마크다운 렌더링과 텍스트 선택 → 앵커 생성 → `.lmm` 저장까지 동작하는
+Phase 1 레퍼런스 렌더러를 구현했다.
+
+### 산출물
+- `src-tauri/src/commands.rs` — Tauri IPC 커맨드 5종
+- `src-tauri/src/lib.rs` — 커맨드 등록 + 플러그인 초기화
+- `src/types/lmm.ts` — lmm.schema.json 기반 TypeScript 타입
+- `src/lib/anchor.ts` — ID 생성, TextQuoteSelector 검색, confidence 판정
+- `src/lib/lmm-document.ts` — parse/serialize, semantic rule A~I 검증
+- `src/App.tsx` — 마크다운 렌더러 UI + 앵커 생성/복구 흐름
+- `src/App.css` — 다크 테마 스타일
+
+### 구현 내용
+
+#### Rust 백엔드 (src-tauri)
+- `generate_anchor_id`: CSPRNG 기반 8자리 ID 생성, 충돌 시 재생성
+- `read_note_pair` / `write_note_pair`: content.lm + memo.lmm 쌍 읽기/쓰기
+- `render_markdown`: pulldown-cmark로 .lm → HTML 변환
+- `plain_text_from_markdown`: 마크다운 평문 추출 (코드 포인트 단위)
+- 의존성 추가: pulldown-cmark, serde_yaml, rand, unicode-segmentation, notify, tauri-plugin-fs, tauri-plugin-dialog
+
+#### TypeScript 프론트엔드
+- DOM 텍스트 노드 기준 offset 계산 (buildTextNodeEntries)
+  - Rust plain text 기준 대신 DOM 기준으로 전환하여 하이라이트 위치 정확도 확보
+- W3C TextQuoteSelector 호환 앵커 복구 (Levenshtein similarity 기반 confidence)
+- injectMark: TreeWalker로 정확한 위치에 mark 태그 삽입
+- 앵커 디버그 패널: exact, ID, confidence 표시
+
+#### 알려진 한계
+- injectMark는 단일 텍스트 노드 내 앵커만 처리 (줄바꿈 걸친 앵커는 Phase 2 SVG 오버레이에서 처리)
+- annotation 타입 선택 UI 없음 (현재는 앵커 생성만 가능)
+- 외부 편집기 변경 감지(notify) 미구현 — Phase 3
+
+### 주요 기술 결정
+
+#### DOM을 plain text 진실의 원본으로 사용
+Rust의 plain_text_from_markdown과 브라우저 DOM의 텍스트 노드 순서가
+달라 하이라이트 위치가 어긋나는 문제 발생.
+DOM TreeWalker로 직접 추출한 텍스트를 기준으로 offset을 계산하는 방식으로 해결.
+
+#### BOM 문제
+PowerShell echo 명령이 UTF-16 BOM을 삽입해 Rust UTF-8 파서 실패.
+New-Object System.Text.UTF8Encoding $false 로 BOM 없는 UTF-8 파일 생성.
+
+### 다음 Phase
+Phase 2: SVG 오버레이 기본 구조 + underline/highlight/box/bracket 렌더링
+- mark DOM 방식 → 투명 SVG 레이어 오버레이로 교체
+- 드래그 종료 시 Quick Action Bar (annotation 타입 선택 팝업)
+- Z-Index 순서 준수 (highlight → underline → box/bracket → connection → note)
 
 ---

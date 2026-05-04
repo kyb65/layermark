@@ -1,0 +1,227 @@
+/* App.css — LayerMark Phase 1 */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #1a1a1a;
+  --bg-2: #242424;
+  --bg-3: #2e2e2e;
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #e8e6e0;
+  --text-2: #9e9c96;
+  --text-3: #6a6864;
+  --accent: #7f77dd;
+  --accent-dim: rgba(127, 119, 221, 0.15);
+  --conf-high: rgba(250, 199, 117, 0.45);
+  --conf-medium: rgba(250, 199, 117, 0.28);
+  --conf-low: rgba(220, 80, 80, 0.25);
+  --radius: 6px;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+/* ── Layout ── */
+.lm-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Toolbar ── */
+.lm-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+.lm-btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 5px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lm-btn-primary:hover { opacity: 0.85; }
+
+.lm-btn-lg {
+  padding: 10px 24px;
+  font-size: 15px;
+  margin-top: 12px;
+}
+
+.lm-folder-name {
+  font-size: 13px;
+  color: var(--text-2);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lm-status {
+  font-size: 12px;
+  color: var(--text-3);
+  flex: 1;
+}
+
+.lm-orphan-badge {
+  font-size: 12px;
+  color: #e07070;
+  background: rgba(220, 80, 80, 0.12);
+  border: 1px solid rgba(220, 80, 80, 0.3);
+  border-radius: var(--radius);
+  padding: 2px 8px;
+}
+
+.lm-anchor-count {
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* ── Content ── */
+.lm-content-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 40px;
+}
+
+.lm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-2);
+  gap: 8px;
+  text-align: center;
+}
+
+.lm-empty-sub {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* ── Markdown body ── */
+.lm-markdown-body {
+  max-width: 720px;
+  margin: 0 auto;
+  user-select: text;
+  cursor: text;
+}
+
+.lm-markdown-body h1 { font-size: 1.9em; font-weight: 600; margin: 0 0 20px; color: var(--text); }
+.lm-markdown-body h2 { font-size: 1.45em; font-weight: 600; margin: 32px 0 14px; color: var(--text); }
+.lm-markdown-body h3 { font-size: 1.2em; font-weight: 600; margin: 24px 0 10px; color: var(--text); }
+.lm-markdown-body p  { margin: 0 0 16px; color: var(--text); }
+.lm-markdown-body ul,
+.lm-markdown-body ol { margin: 0 0 16px 24px; color: var(--text); }
+.lm-markdown-body li { margin: 4px 0; }
+.lm-markdown-body strong { font-weight: 600; }
+.lm-markdown-body em { font-style: italic; color: var(--text-2); }
+.lm-markdown-body code {
+  font-family: "D2Coding", "Cascadia Code", monospace;
+  font-size: 0.88em;
+  background: var(--bg-3);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: #a8d8a8;
+}
+.lm-markdown-body pre {
+  background: var(--bg-3);
+  border-radius: var(--radius);
+  padding: 16px;
+  overflow-x: auto;
+  margin: 0 0 16px;
+}
+.lm-markdown-body pre code { background: none; padding: 0; color: var(--text); }
+.lm-markdown-body blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 16px;
+  margin: 0 0 16px;
+  color: var(--text-2);
+}
+.lm-markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 24px 0;
+}
+
+/* ── Anchor highlight (Phase 1 — DOM mark, Phase 2 → SVG overlay) ── */
+.lm-markdown-body mark {
+  background: var(--conf-high);
+  color: inherit;
+  border-radius: 2px;
+}
+
+/* ── Anchor debug panel ── */
+.lm-anchor-panel {
+  border-top: 1px solid var(--border);
+  background: var(--bg-2);
+  max-height: 180px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.lm-panel-title {
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 6px 16px 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lm-anchor-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 16px;
+  font-size: 12px;
+  border-left: 3px solid transparent;
+}
+
+.lm-conf-high   { border-left-color: #fac875; }
+.lm-conf-medium { border-left-color: #ef9f27; }
+.lm-conf-low,
+.lm-conf-orphan { border-left-color: #e24b4a; }
+
+.lm-anchor-exact {
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lm-anchor-id {
+  color: var(--text-3);
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.lm-anchor-conf {
+  color: var(--text-3);
+  font-size: 11px;
+  width: 52px;
+  text-align: right;
+}

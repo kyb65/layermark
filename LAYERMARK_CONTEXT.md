@@ -714,8 +714,8 @@ Obsidian, Logseq 등이 `.lmm` 포맷을 플러그인으로 지원하는 것이 
 | 검증 스크립트 (`validate.js`) | ✅ 작동 확인 |
 | `sample.lmm` (모든 케이스 포함) | ✅ 작성 완료 |
 | `broken.lmm` (오류 케이스 테스트) | ✅ 작성 완료 |
-| Tauri 프로젝트 세팅 | ⬜ Phase 1 |
-| 텍스트 렌더러 | ⬜ Phase 1 |
+| Tauri 프로젝트 세팅 | ✅ Phase 1 완료 |
+| 텍스트 렌더러 | ✅ Phase 1 완료 |
 | SVG 오버레이 | ⬜ Phase 2 |
 | Orphan 관리 UI | ⬜ Phase 3 |
 | Connection 렌더링 | ⬜ Phase 4 |
