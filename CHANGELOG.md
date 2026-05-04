@@ -286,3 +286,26 @@ connection 타입은 허용 (각각 독립적인 연결).
 
 ### 다음 Phase
 Phase 4: connection 렌더링 — arrow/line + elkjs 자동 배치
+
+### Phase 3 핫픽스 (검증 후 수정)
+
+#### layout: Orphan 패널 추가 후 스크롤 구조 오류
+- `lm-body`에 `min-height: 0` 누락 → flex child가 viewport를 넘어 스크롤바가 전체 영역에 붙는 문제
+- `lm-content-area`에 `padding: 40px` 누락 (lm-content-wrap에서 이전하면서 빠짐)
+- `lm-overlay-wrap`의 `height: 100%` 제거 (overflow-y scroll 컨테이너 안에서 오동작)
+
+#### duplicate annotation guard 시멘틱 버그
+- 기존 `"style" in e || "style" in n` 조건: highlight 객체에 style 키가 없으면
+  false → color 체크로 넘어가는 듯 보이지만, `||` 조건이 중간에서 잘못 분기
+- 타입별 switch로 교체: highlight→color, underline→style(default:"single"),
+  bracket→style, box→style(default:"rectangle"), note→무조건 1개
+
+#### highlight SVG 클릭 불가
+- `OverlayGroup`의 `pointerEvents: "stroke"` → highlight는 path가 아닌 filled rect이므로
+  stroke 이벤트 없음 → `ins.type === "highlight" ? "fill" : "stroke"`로 분기
+
+#### 드래그로 중복 앵커 생성 (근본 원인)
+- 기존 앵커에 annotation 추가 경로: SVG 클릭뿐이었는데 highlight는 클릭 불가
+- 결국 사용자가 같은 텍스트를 다시 드래그 → 새 앵커 생성 → 중복 덧씌움
+- `handleMouseUp`에 기존 앵커 overlap 감지 로직 추가:
+  selStart < raEnd && selEnd > ra.position → 새 앵커 대신 기존 메뉴 오픈

@@ -734,6 +734,18 @@ Obsidian, Logseq 등이 `.lmm` 포맷을 플러그인으로 지원하는 것이 
 - 드래그 후 annotation 메뉴 자동 오픈 (range.getBoundingClientRect() 기준)
 - 검증 완료: 실기기에서 전체 annotation 타입 정상 작동 확인
 
+## Phase 3 핫픽스 (2026-05)
+
+- layout fix: lm-body min-height:0 + lm-content-area padding:40px + lm-overlay-wrap height 제거
+  → Orphan 패널 추가로 인한 스크롤바 위치 오류 수정
+- duplicate annotation guard 로직 교체
+  → 기존: style/color를 Record<string,unknown> 캐스팅 + || 조건으로 처리 (highlight 중복 허용 버그)
+  → 변경: annotation 타입별 switch로 명시적 처리
+- highlight SVG pointerEvents: "stroke" → "fill"로 수정 (fill 영역 클릭 불가 버그)
+- 드래그 시 기존 앵커와 겹치면 새 앵커 생성 대신 기존 앵커 메뉴 오픈
+  → 같은 텍스트 반복 드래그로 중복 앵커 생성되던 근본 원인 차단
+- 검증 완료: 실기기에서 Orphan 패널, 파일 감시, 중복 방지 정상 작동 확인
+
 ---
 
 ## 15. 다음 세션 시작 방법
