@@ -62,7 +62,7 @@ export function validateSemantic(doc: LmmDocument): ValidationResult {
     allIds.add(anchor.id);
   }
   for (const ann of doc.annotations) {
-    const ann_ = ann as Record<string, unknown>;
+    const ann_ = ann as unknown as Record<string, unknown>;
     if (typeof ann_["id"] === "string") {
       if (allIds.has(ann_["id"] as NodeId))
         errors.push(`Rule B/C: duplicate ID "${ann_["id"]}"`);
