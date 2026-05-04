@@ -717,7 +717,7 @@ Obsidian, Logseq 등이 `.lmm` 포맷을 플러그인으로 지원하는 것이 
 | Tauri 프로젝트 세팅 | ✅ Phase 1 완료 |
 | 텍스트 렌더러 | ✅ Phase 1 완료 |
 | SVG 오버레이 | ✅ Phase 2 완료 |
-| Orphan 관리 UI | ⬜ Phase 3 |
+| Orphan 관리 UI | ✅ Phase 3 완료 |
 | Connection 렌더링 | ⬜ Phase 4 |
 
 ## GitHub

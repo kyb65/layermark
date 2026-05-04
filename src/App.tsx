@@ -1,6 +1,7 @@
-// src/App.tsx — Phase 2: SVG overlay rendering
+// src/App.tsx — Phase 3: Orphan panel + file watcher + duplicate annotation guard
 import { useState, useRef, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { createAnchor, collectAllIds, resolveAnchor } from "./lib/anchor";
 import {
@@ -14,7 +15,9 @@ import {
 } from "./lib/lmm-document";
 import { SvgOverlay } from "./components/SvgOverlay";
 import { AnnotationMenu } from "./components/AnnotationMenu";
-import type { LmmDocument, AnchorMatch, Annotation } from "./types/lmm";
+import { OrphanPanel } from "./components/OrphanPanel";
+import type { OrphanInfo } from "./components/OrphanPanel";
+import type { LmmDocument, AnchorMatch, OrphanAnchor, Annotation } from "./types/lmm";
 import type { ResolvedAnchor, MenuState } from "./types/overlay";
 import "./App.css";
 
@@ -65,6 +68,25 @@ function extractDomPlainText(container: HTMLElement): string {
   return text;
 }
 
+// ── Duplicate annotation guard ────────────────────────────────────────────────
+// Prevents stacking identical annotation types on the same anchor.
+// Connection annotations are always allowed (each represents a distinct link).
+
+function isDuplicateAnnotation(doc: LmmDocument, annotation: Annotation): boolean {
+  if (annotation.type === "connection") return false;
+  return doc.annotations.some((existing) => {
+    if (existing.type !== annotation.type) return false;
+    if (!("target" in existing) || !("target" in annotation)) return false;
+    if (existing.target !== annotation.target) return false;
+    // For typed annotations, also check style/color identity
+    const e = existing as unknown as Record<string, unknown>;
+    const n = annotation as unknown as Record<string, unknown>;
+    if ("style" in e || "style" in n) return e["style"] === n["style"];
+    if ("color" in e || "color" in n) return e["color"] === n["color"];
+    return true;
+  });
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -72,18 +94,58 @@ export default function App() {
   const [htmlContent, setHtmlContent] = useState<string>("");
   const [lmmDoc, setLmmDoc] = useState<LmmDocument>(newLmmDocument());
   const [resolvedAnchors, setResolvedAnchors] = useState<ResolvedAnchor[]>([]);
+  const [orphans, setOrphans] = useState<OrphanInfo[]>([]);
+  const [orphanPanelOpen, setOrphanPanelOpen] = useState(false);
   const [status, setStatus] = useState<string>("노트 폴더를 열어 시작하세요");
-  const [orphanCount, setOrphanCount] = useState(0);
   const [menu, setMenu] = useState<MenuState | null>(null);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const domPlainRef = useRef<string>("");
+  // Keep folderPath in a ref so event listeners always see the latest value
+  const folderPathRef = useRef<string | null>(null);
+  const lmmDocRef = useRef<LmmDocument>(newLmmDocument());
+
+  useEffect(() => { folderPathRef.current = folderPath; }, [folderPath]);
+  useEffect(() => { lmmDocRef.current = lmmDoc; }, [lmmDoc]);
+
+  // ── File watcher setup ──────────────────────────────────────────────────────
+
+  useEffect(() => {
+    // Listen for "content-changed" event from Rust watcher
+    const unlisten = listen<string>("content-changed", async (event) => {
+      const changedFolder = event.payload;
+      // Only react if this is the currently open folder
+      if (changedFolder !== folderPathRef.current) return;
+
+      try {
+        const pair = await invoke<NotePair>("read_note_pair", { folder: changedFolder });
+        const html = await invoke<string>("render_markdown", { markdown: pair.content });
+
+        setHtmlContent(html);
+        setStatus("외부 편집기 변경 감지 — 앵커 재검증 중…");
+        // reconcile is triggered by htmlContent useEffect below
+      } catch (e) {
+        setStatus(`외부 변경 읽기 실패: ${e}`);
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  // ── Folder open ─────────────────────────────────────────────────────────────
 
   async function openFolder() {
     const selected = await open({ directory: true, multiple: false });
     if (!selected || Array.isArray(selected)) return;
 
     try {
+      // Stop watching previous folder
+      if (folderPathRef.current) {
+        await invoke("unwatch_note_folder").catch(() => {});
+      }
+
       const pair = await invoke<NotePair>("read_note_pair", { folder: selected });
       const html = await invoke<string>("render_markdown", { markdown: pair.content });
       const doc = pair.memo ? parseLmm(pair.memo) : newLmmDocument();
@@ -92,27 +154,28 @@ export default function App() {
       setHtmlContent(html);
       setLmmDoc(doc);
       setStatus(`${selected.split(/[\\/]/).pop()} 열림`);
+
+      // Start watching new folder
+      await invoke("watch_note_folder", { folder: selected }).catch((e) => {
+        console.warn("File watcher failed:", e);
+      });
     } catch (e) {
       setStatus(`오류: ${e}`);
     }
   }
 
-  useEffect(() => {
-    if (!contentRef.current || !htmlContent) return;
-    const plain = extractDomPlainText(contentRef.current);
-    domPlainRef.current = plain;
-    reconcile(lmmDoc, plain);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [htmlContent]);
+  // ── Reconciliation ──────────────────────────────────────────────────────────
 
   const reconcile = useCallback((doc: LmmDocument, plain: string) => {
     const resolved: ResolvedAnchor[] = [];
-    let orphans = 0;
+    const newOrphans: OrphanInfo[] = [];
     let updatedDoc = doc;
 
     for (const anchor of doc.anchors) {
       const result = resolveAnchor(anchor, plain);
+
       if ("candidatePosition" in result) {
+        // AnchorMatch
         const match = result as AnchorMatch;
         const pos = match.candidatePosition!;
         resolved.push({
@@ -125,14 +188,46 @@ export default function App() {
           updatedDoc = updateAnchorPosition(updatedDoc, anchor.id, pos);
         }
       } else {
-        orphans++;
+        // OrphanAnchor — collect candidates near original position
+        const orphan = result as OrphanAnchor;
+        newOrphans.push({
+          anchor,
+          candidates: orphan.candidates,
+        });
       }
     }
 
     setResolvedAnchors(resolved);
-    setOrphanCount(orphans);
-    if (updatedDoc !== doc) setLmmDoc(updatedDoc);
+    setOrphans(newOrphans);
+
+    // Auto-open orphan panel if new orphans appeared
+    if (newOrphans.length > 0) {
+      setOrphanPanelOpen(true);
+    }
+
+    if (updatedDoc !== doc) {
+      setLmmDoc(updatedDoc);
+    }
   }, []);
+
+  // Reconcile on content load (covers both open and external edit)
+  useEffect(() => {
+    if (!contentRef.current || !htmlContent) return;
+    const plain = extractDomPlainText(contentRef.current);
+    domPlainRef.current = plain;
+    reconcile(lmmDoc, plain);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [htmlContent]);
+
+  // Re-reconcile on lmmDoc change (e.g. after annotation added)
+  useEffect(() => {
+    if (domPlainRef.current) {
+      reconcile(lmmDoc, domPlainRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lmmDoc]);
+
+  // ── Selection → Anchor ──────────────────────────────────────────────────────
 
   async function handleMouseUp() {
     if (!folderPath || !contentRef.current) return;
@@ -155,7 +250,6 @@ export default function App() {
 
     if (selStart === -1 || selEnd === -1 || selStart >= selEnd) return;
 
-    // 드래그 끝 위치를 메뉴 좌표로 저장 (overlay-wrap 기준 상대 좌표)
     const selectionRect = range.getBoundingClientRect();
     const wrapEl = contentRef.current.parentElement!;
     const wrapRect = wrapEl.getBoundingClientRect();
@@ -181,7 +275,6 @@ export default function App() {
       reconcile(newDoc, domPlain);
       setStatus(`앵커 생성: "${selectedText.slice(0, 20)}${selectedText.length > 20 ? "…" : ""}"`);
       selection.removeAllRanges();
-      // 앵커 생성 직후 annotation 메뉴 자동 오픈
       setMenu({ anchorId: anchor.id, x: menuX, y: menuY });
     } catch (e) {
       setStatus(`앵커 생성 실패: ${e}`);
@@ -194,8 +287,17 @@ export default function App() {
     return pair.content;
   }
 
+  // ── Annotation management ───────────────────────────────────────────────────
+
   async function handleAddAnnotation(annotation: Annotation) {
     if (!folderPath) return;
+
+    // Duplicate guard
+    if (isDuplicateAnnotation(lmmDoc, annotation)) {
+      setStatus("이미 동일한 주석이 있습니다");
+      return;
+    }
+
     const newDoc = addAnnotation(lmmDoc, annotation);
     const content = await getCurrentContent();
     await invoke("write_note_pair", {
@@ -221,13 +323,31 @@ export default function App() {
     setStatus("앵커 삭제됨");
   }
 
-  // Re-reconcile when lmmDoc changes (e.g. after annotation added)
-  useEffect(() => {
-    if (domPlainRef.current) {
-      reconcile(lmmDoc, domPlainRef.current);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lmmDoc]);
+  // ── Orphan management ───────────────────────────────────────────────────────
+
+  async function handleOrphanReconnect(anchorId: string, candidatePosition: number) {
+    if (!folderPath) return;
+
+    // Update the anchor's position in the doc so reconcile picks it up as "high"
+    const updatedDoc = updateAnchorPosition(lmmDoc, anchorId, candidatePosition);
+    const content = await getCurrentContent();
+    await invoke("write_note_pair", {
+      folder: folderPath,
+      content,
+      memo: serializeLmm(updatedDoc),
+    });
+    setLmmDoc(updatedDoc);
+    // reconcile will run via lmmDoc effect
+    setStatus("Orphan 앵커 재연결 완료");
+  }
+
+  async function handleOrphanDelete(anchorId: string) {
+    if (!folderPath) return;
+    await handleRemoveAnchor(anchorId);
+    setOrphans((prev) => prev.filter((o) => o.anchor.id !== anchorId));
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="lm-app">
@@ -241,60 +361,70 @@ export default function App() {
           </span>
         )}
         <span className="lm-status">{status}</span>
-        {orphanCount > 0 && (
-          <span className="lm-orphan-badge">⚠ 끊긴 앵커 {orphanCount}개</span>
-        )}
         <div className="lm-spacer" />
         <div className="lm-anchor-count">
           앵커 {lmmDoc.anchors.length}  주석 {lmmDoc.annotations.length}
         </div>
       </div>
 
-      <div className="lm-content-wrap">
-        {!folderPath ? (
-          <div className="lm-empty">
-            <p>노트 폴더를 열어 시작하세요</p>
-            <p className="lm-empty-sub">폴더 안에 content.lm 파일이 있어야 합니다</p>
-            <button className="lm-btn-primary lm-btn-lg" onClick={openFolder}>
-              폴더 열기
-            </button>
-          </div>
-        ) : (
-          <div className="lm-overlay-wrap">
-            {/* Shared SVG defs */}
-            <svg width="0" height="0" style={{ position: "absolute", overflow: "hidden" }}>
-              <defs>
-                <filter id="lm-blur" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="2" />
-                </filter>
-              </defs>
-            </svg>
-
-            <div
-              ref={contentRef}
-              className="lm-markdown-body"
-              onMouseUp={handleMouseUp}
-              dangerouslySetInnerHTML={{ __html: htmlContent }}
-            />
-
-            <div className="lm-svg-wrap">
-              <SvgOverlay
-                contentRef={contentRef}
-                lmmDoc={lmmDoc}
-                resolvedAnchors={resolvedAnchors}
-                onAnchorClick={(m) => setMenu(m)}
-              />
+      <div className="lm-body">
+        <div className="lm-content-area">
+          {!folderPath ? (
+            <div className="lm-empty">
+              <p>노트 폴더를 열어 시작하세요</p>
+              <p className="lm-empty-sub">폴더 안에 content.lm 파일이 있어야 합니다</p>
+              <button className="lm-btn-primary lm-btn-lg" onClick={openFolder}>
+                폴더 열기
+              </button>
             </div>
+          ) : (
+            <div className="lm-overlay-wrap">
+              {/* Shared SVG defs */}
+              <svg width="0" height="0" style={{ position: "absolute", overflow: "hidden" }}>
+                <defs>
+                  <filter id="lm-blur" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="2" />
+                  </filter>
+                </defs>
+              </svg>
 
-            {menu && (
-              <AnnotationMenu
-                menu={menu}
-                onClose={() => setMenu(null)}
-                onAdd={handleAddAnnotation}
-                onRemoveAnchor={handleRemoveAnchor}
+              <div
+                ref={contentRef}
+                className="lm-markdown-body"
+                onMouseUp={handleMouseUp}
+                dangerouslySetInnerHTML={{ __html: htmlContent }}
               />
-            )}
-          </div>
+
+              <div className="lm-svg-wrap">
+                <SvgOverlay
+                  contentRef={contentRef}
+                  lmmDoc={lmmDoc}
+                  resolvedAnchors={resolvedAnchors}
+                  onAnchorClick={(m) => setMenu(m)}
+                />
+              </div>
+
+              {menu && (
+                <AnnotationMenu
+                  menu={menu}
+                  onClose={() => setMenu(null)}
+                  onAdd={handleAddAnnotation}
+                  onRemoveAnchor={handleRemoveAnchor}
+                />
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Orphan panel — docked to the right, always rendered when folder is open */}
+        {folderPath && (
+          <OrphanPanel
+            orphans={orphans}
+            isOpen={orphanPanelOpen}
+            onToggle={() => setOrphanPanelOpen((v) => !v)}
+            onReconnect={handleOrphanReconnect}
+            onDelete={handleOrphanDelete}
+          />
         )}
       </div>
     </div>

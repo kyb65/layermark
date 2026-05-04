@@ -222,3 +222,67 @@ note 그룹은 `pointer-events: all` (클릭으로 말풍선 토글).
 Phase 3: Orphan 관리 — 사이드바 패널 + reconciliation + 외부 편집기 변경 감지
 
 ---
+
+
+## [Phase 3] — 2026-05 — Orphan 관리 + 파일 감시 + 중복 annotation 방지
+
+### 개요
+Phase 2에서 badge만 표시되던 Orphan 관리를 완전히 구현했다.
+외부 편집기로 content.lm을 수정해도 자동으로 앵커를 재검증하고,
+끊긴 마킹을 사이드바 패널에서 시각적으로 관리할 수 있다.
+
+### 산출물
+- `src-tauri/src/watch.rs` — notify 기반 content.lm 파일 감시
+  - "content-changed" Tauri event emit
+  - 폴더 단위 NonRecursive 감시, content.lm 필터링
+  - WatcherState: Tauri managed state로 watcher lifetime 관리
+- `src-tauri/src/lib.rs` — watch 모듈 등록 + manage(WatcherState)
+- `src/components/OrphanPanel.tsx` — Orphan 사이드바 패널
+  - 접힘/펼침 토글 (36px ↔ 260px)
+  - 후보 목록 표시 + [연결] 버튼
+  - [삭제] + "나중에 처리 가능" (non-blocking 원칙 준수)
+  - Orphan 발생 시 패널 자동 오픈
+- `src/lib/anchor.ts` — resolveAnchor 고도화
+  - 저신뢰 케이스(confidence: low)도 OrphanAnchor로 처리
+  - findNearbyCandidates: exact가 사라진 경우 ±200 cp 범위에서
+    유사 길이 토큰 검색 → 후보 최대 3개 제시
+  - 한국어 조사 단독 선택 시 prefix/suffix 충돌 케이스 명시 주석
+- `src/App.tsx` — Phase 3 통합
+  - listen("content-changed") → 자동 reconcile
+  - watch_note_folder / unwatch_note_folder IPC 연결
+  - isDuplicateAnnotation: 동일 타입+스타일 annotation 중복 방지
+  - OrphanPanel 연결 (reconnect/delete/toggle)
+  - lm-body + lm-content-area 레이아웃으로 사이드바 배치
+- `src/App.css` — Phase 3 스타일
+  - lm-body (flex row), lm-content-area
+  - OrphanPanel 전체 스타일 (패널/헤더/아이템/후보/버튼)
+  - lm-btn-small, lm-btn-reconnect, lm-btn-delete
+
+### 주요 구현 결정
+
+#### Orphan 4원칙 준수
+- 자동 삭제 없음: [삭제]는 항상 명시적 사용자 클릭 필요
+- 확신 없는 자동 재연결 없음: confidence=low → Orphan, 후보만 제시
+- 사용자 선택: [연결] 클릭 시 해당 position으로 anchor.position 업데이트
+  → 다음 reconcile에서 high confidence로 재연결
+- Non-blocking: Orphan이 있어도 편집 계속 가능
+
+#### 파일 감시 구조
+notify::recommended_watcher가 백그라운드 스레드에서 이벤트를 받아
+Tauri AppHandle.emit()으로 프론트에 전달.
+WatcherState(Mutex<Option<RecommendedWatcher>>)를 Tauri managed state로
+등록해 watcher lifetime을 안전하게 관리.
+폴더 전환 시 기존 watcher를 먼저 drop(unwatch)하고 새 watcher 시작.
+
+#### 중복 annotation 방지
+connection 타입은 허용 (각각 독립적인 연결).
+나머지 타입은 same target + same type + same style/color 조합이면 거부.
+
+### 알려진 한계 / Phase 4로 이월
+- connection 렌더링 미구현 (Phase 4)
+- note 말풍선 창 경계 clamp 미구현 (overflow: visible 임시 처리 유지)
+- Orphan 재연결 후 exact 불일치 케이스는 medium confidence로 남음
+  (사용자가 직접 앵커 삭제 후 재선택 권장)
+
+### 다음 Phase
+Phase 4: connection 렌더링 — arrow/line + elkjs 자동 배치

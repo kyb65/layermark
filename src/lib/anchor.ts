@@ -1,18 +1,25 @@
 // src/lib/anchor.ts
 // Anchor utilities: ID generation, TextQuoteSelector search, confidence scoring
 // Spec reference: LAYERMARK_CONTEXT.md §3 Anchor
+//
+// Design note (Korean particle edge case):
+//   When exact is a single Korean particle (은/는/이/가/을/를 etc.),
+//   prefix/suffix alone may collide across multiple occurrences.
+//   resolveAnchor handles this via the scored-candidates approach:
+//   all occurrences are scored, the best wins. Position is used as a
+//   tiebreaker. If contextScore < 0.6 for all candidates, they are
+//   reported as Orphan candidates for user review rather than
+//   auto-reconnecting.
 
 import { invoke } from "@tauri-apps/api/core";
 import type { Anchor, AnchorMatch, ConfidenceLevel, OrphanAnchor } from "../types/lmm";
 
 // ── ID generation ─────────────────────────────────────────────────────────────
-// Delegates to Rust CSPRNG (crypto.getRandomValues fallback for tests)
 
 export async function generateAnchorId(existingIds: string[]): Promise<string> {
   return invoke<string>("generate_anchor_id", { existingIds });
 }
 
-// Collect all IDs from a document (anchors + annotation ids)
 export function collectAllIds(
   anchors: Anchor[],
   annotations: Array<{ id?: string }>
@@ -24,8 +31,6 @@ export function collectAllIds(
 }
 
 // ── Code point utilities ──────────────────────────────────────────────────────
-// spec: position = Unicode code point offset, NOT .length (UTF-16 units)
-// [...str] converts to array of code points (handles astral plane correctly)
 
 export function cpLength(str: string): number {
   return [...str].length;
@@ -46,9 +51,6 @@ export function cpIndexOf(haystack: string, needle: string, fromIndex = 0): numb
 }
 
 // ── Anchor creation ───────────────────────────────────────────────────────────
-// Called when user finishes a drag-select.
-// plainText: full plain text of content.lm (from Rust plain_text_from_markdown)
-// selStart/selEnd: code point offsets of the selection
 
 export async function createAnchor(
   plainText: string,
@@ -64,7 +66,6 @@ export async function createAnchor(
   return { id, exact, prefix, suffix, position: selStart };
 }
 
-// Builds prefix/suffix, extending to 64 cp if needed for disambiguation
 function buildContext(
   plainText: string,
   selStart: number,
@@ -75,20 +76,17 @@ function buildContext(
     const prefix = cpSlice(plainText, Math.max(0, selStart - len), selStart);
     const suffix = cpSlice(plainText, selEnd, selEnd + len);
 
-    // Check if this prefix+suffix uniquely identifies the exact
     const occurrences = findAllOccurrences(plainText, exact);
     if (occurrences.length <= 1) return { prefix, suffix };
 
-    // Multiple occurrences: check if this prefix/suffix is unique
     const isUnique = occurrences.every((pos) => {
-      if (pos === selStart) return true; // the intended one
+      if (pos === selStart) return true;
       const otherPrefix = cpSlice(plainText, Math.max(0, pos - len), pos);
       const otherSuffix = cpSlice(plainText, pos + cpLength(exact), pos + cpLength(exact) + len);
       return otherPrefix !== prefix || otherSuffix !== suffix;
     });
     if (isUnique || len === 64) return { prefix, suffix };
   }
-  // Unreachable but TypeScript needs it
   return { prefix: "", suffix: "" };
 }
 
@@ -105,8 +103,10 @@ function findAllOccurrences(text: string, needle: string): number[] {
 }
 
 // ── TextQuoteSelector search (W3C compatible) ─────────────────────────────────
-// Returns best match for an anchor in updated plainText.
-// Priority: exact+prefix+suffix → exact+position → orphan
+// Returns AnchorMatch (found with confidence) or OrphanAnchor (lost).
+//
+// When exact is gone: search for similar-length tokens near position as candidates.
+// When exact exists but context is poor: return as Orphan with candidate positions.
 
 export function resolveAnchor(
   anchor: Anchor,
@@ -115,8 +115,9 @@ export function resolveAnchor(
   const occurrences = findAllOccurrences(plainText, anchor.exact);
 
   if (occurrences.length === 0) {
-    // exact text is gone — orphan
-    return { anchor, candidates: [] };
+    // exact text is gone — search near original position for candidates
+    const candidates = findNearbyCandidates(anchor, plainText);
+    return { anchor, candidates };
   }
 
   // Score each occurrence by prefix/suffix similarity
@@ -136,7 +137,6 @@ export function resolveAnchor(
     return { pos, contextScore, posDistance };
   });
 
-  // Sort: highest context score, then closest position
   scored.sort((a, b) =>
     b.contextScore !== a.contextScore
       ? b.contextScore - a.contextScore
@@ -146,11 +146,55 @@ export function resolveAnchor(
   const best = scored[0];
   const confidence = scoreToConfidence(best.contextScore, best.pos === anchor.position);
 
+  if (confidence === "low") {
+    // All matches are poor — surface as orphan with candidates
+    const candidates = scored.map((s) => ({
+      text: cpSlice(plainText, s.pos, s.pos + cpLength(anchor.exact)),
+      position: s.pos,
+    }));
+    return { anchor, candidates };
+  }
+
   return {
     anchor,
     confidence,
     candidatePosition: best.pos,
   };
+}
+
+// Find candidate replacement texts near the anchor's original position.
+// Looks for word-like tokens (sequences of non-whitespace chars) within
+// a ±200 code point window of the original position.
+function findNearbyCandidates(
+  anchor: Anchor,
+  plainText: string
+): Array<{ text: string; position: number }> {
+  const exactLen = cpLength(anchor.exact);
+  const window = 200;
+  const start = Math.max(0, anchor.position - window);
+  const end = Math.min(cpLength(plainText), anchor.position + window);
+  const region = cpSlice(plainText, start, end);
+
+  // Tokenize region into word-like segments of similar length (±2 code points)
+  const candidates: Array<{ text: string; position: number }> = [];
+  const tokenRe = /\S+/g;
+  let m: RegExpExecArray | null;
+  while ((m = tokenRe.exec(region)) !== null) {
+    const tokenCp = [...m[0]];
+    const lenDiff = Math.abs(tokenCp.length - exactLen);
+    if (lenDiff <= 2) {
+      candidates.push({
+        text: m[0],
+        position: start + [...region.slice(0, m.index)].length,
+      });
+    }
+  }
+
+  // Sort by distance to original position, take top 3
+  candidates.sort((a, b) =>
+    Math.abs(a.position - anchor.position) - Math.abs(b.position - anchor.position)
+  );
+  return candidates.slice(0, 3);
 }
 
 function scoreToConfidence(contextScore: number, positionMatches: boolean): ConfidenceLevel {
@@ -159,7 +203,6 @@ function scoreToConfidence(contextScore: number, positionMatches: boolean): Conf
   return "low";
 }
 
-// Normalised Levenshtein similarity: 0 (completely different) to 1 (identical)
 function similarity(a: string, b: string): number {
   if (a === b) return 1;
   if (a.length === 0 || b.length === 0) return 0;
