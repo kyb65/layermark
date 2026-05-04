@@ -140,3 +140,85 @@ Phase 2: SVG 오버레이 기본 구조 + underline/highlight/box/bracket 렌더
 - Z-Index 순서 준수 (highlight → underline → box/bracket → connection → note)
 
 ---
+
+## [Phase 2] — 2026-05 — SVG 오버레이 + 주석 메뉴
+
+### 개요
+DOM mark 방식을 걷어내고, Range.getClientRects() 기반 SVG 오버레이로
+완전히 전환했다. 텍스트 선택 후 바로 annotation 타입을 선택할 수 있는
+2-step 컨텍스트 메뉴도 구현했다.
+
+### 산출물
+- `src/lib/overlay.ts` — SVG 드로잉 엔진
+  - `getLineRects`: Range.getClientRects() → LineRect[], 멀티라인 지원
+  - `buildDrawInstruction`: annotation 타입 → DrawInstruction 디스패처
+- `src/types/overlay.ts` — ResolvedAnchor, MenuState 공유 타입
+- `src/components/SvgOverlay.tsx` — SVG 오버레이 렌더러
+  - ResizeObserver 기반 자동 재계산
+  - 레이어 순서: highlight → underline/bracket/box → note
+- `src/components/AnnotationMenu.tsx` — 2-level 컨텍스트 메뉴
+- `src/App.tsx` — Phase 2로 업데이트 (DOM mark 제거, SVG + 메뉴 연결)
+- `src/App.css` — overlay-wrap/svg-wrap 레이아웃, 메뉴 스타일 전체
+
+### 구현 내용
+
+#### SVG 오버레이 아키텍처
+```
+lm-overlay-wrap (position: relative)
+  ├── lm-markdown-body        ← 마크다운 HTML (텍스트 선택 가능)
+  ├── lm-svg-wrap             ← position: absolute, top/left: 0, pointer-events: none
+  │   └── SvgOverlay (SVG)   ← annotation 그룹별 pointer-events 재활성화
+  └── AnnotationMenu          ← position: absolute, z-index: 200
+```
+
+#### 지원 annotation 렌더링
+| 타입 | 구현 내용 |
+|------|-----------|
+| underline.single | 1.4px 실선 |
+| underline.double | 1.2px 이중선 (2.5px 간격) |
+| underline.wave | quadratic bezier 사인파 (amplitude 2.2, wavelength 8) |
+| underline.dashed | strokeDasharray 4 3 |
+| highlight | RGBA fill rect (색상별 투명도 조정) |
+| bracket.round | quadratic bezier 곡선 괄호 |
+| bracket.square | L자 꺾임 |
+| bracket.curly | 3-segment curly brace |
+| bracket.angle | < > 형 |
+| bracket.lenticular | 렌즈형 곡선 |
+| box.rectangle | 사각형 stroke |
+| box.oval | SVG arc 타원 |
+| box.triangle | 삼각형 |
+| note | 점선 밑줄 + 클릭 토글 말풍선 (SVG foreignObject) |
+
+#### 컨텍스트 메뉴 UX
+- 텍스트 드래그 → 앵커 생성 → SVG 주석 즉시 반영
+- SVG 위 annotation 클릭 → AnnotationMenu 오픈
+- 메뉴 Step 1: highlight / underline / bracket / box / note / 앵커 삭제
+- 메뉴 Step 2: 스타일/색상 세부 선택
+- Note: textarea 입력, Ctrl+Enter 확인
+- 외부 클릭 / ESC로 닫기
+
+#### 멀티라인 처리
+Range.getClientRects()가 줄 단위 rect를 반환하므로 Phase 1의 단일 텍스트 노드 한계 해결.
+인접 rect 병합 로직(sameRow 2px tolerance, adjacent gap 1px)으로 토막난 rect 통합.
+
+### 주요 기술 결정
+
+#### cpToUtf16Offset
+DOM Range API는 UTF-16 offset을 요구하지만 LayerMark의 position은 코드 포인트 단위.
+`cpToUtf16Offset()` 함수로 변환하여 이모지 등 surrogate pair 문자 대응.
+
+#### pointer-events 전략
+SVG 기본값 `pointer-events: none`으로 텍스트 선택 보호.
+highlight 그룹은 `pointer-events: stroke` (테두리만 이벤트).
+note 그룹은 `pointer-events: all` (클릭으로 말풍선 토글).
+
+### 알려진 한계 / Phase 3으로 이월
+- Orphan 사이드바 UI 미구현 (badge만 표시됨)
+- 외부 편집기 수정 감지(notify) 미구현
+- 한 앵커에 여러 동일 타입 annotation이 쌓일 수 있음 (중복 방지 미구현)
+- note 말풍선이 창 위/좌우 경계에서 잘릴 수 있음 (overflow: visible로 임시 처리)
+
+### 다음 Phase
+Phase 3: Orphan 관리 — 사이드바 패널 + reconciliation + 외부 편집기 변경 감지
+
+---
