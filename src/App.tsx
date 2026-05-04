@@ -276,6 +276,22 @@ export default function App() {
     const menuX = selectionRect.right - wrapRect.left;
     const menuY = selectionRect.bottom - wrapRect.top + 6;
 
+    // ── Existing anchor hit-test ─────────────────────────────────────────────
+    // If the dragged range overlaps an already-resolved anchor, open its menu
+    // instead of creating a duplicate anchor.
+    // Overlap condition: ranges share at least one code point.
+    const overlapping = resolvedAnchors.find((ra) => {
+      const raEnd = ra.position + ra.length;
+      return selStart < raEnd && selEnd > ra.position;
+    });
+    if (overlapping) {
+      selection.removeAllRanges();
+      setMenu({ anchorId: overlapping.id, x: menuX, y: menuY });
+      setStatus("기존 앵커 선택됨 — 주석을 추가하거나 삭제할 수 있습니다");
+      return;
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     const domPlain = domPlainRef.current;
     const existingIds = collectAllIds(
       lmmDoc.anchors,

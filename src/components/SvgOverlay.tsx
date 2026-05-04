@@ -192,11 +192,15 @@ export function SvgOverlay({ contentRef, lmmDoc, resolvedAnchors, onAnchorClick 
 // ── Individual group renderers ────────────────────────────────────────────────
 
 function OverlayGroup({ ins }: { ins: DrawInstruction }) {
+  // highlight uses filled rects — needs "fill" to be clickable.
+  // other types draw strokes only — "stroke" is sufficient and
+  // avoids blocking text selection in the fill area.
+  const pe = ins.type === "highlight" ? "fill" : "stroke";
   return (
     <g
       data-anchor-id={ins.anchorId}
       data-annotation-id={ins.annotationId}
-      style={{ pointerEvents: "stroke" }}
+      style={{ pointerEvents: pe, cursor: "pointer" }}
       className={`lm-overlay-group lm-overlay-${ins.type}`}
     >
       {ins.paths.map((p, i) => (
