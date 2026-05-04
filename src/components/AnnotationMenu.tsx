@@ -11,6 +11,8 @@ interface Props {
   onClose: () => void;
   onAdd: (annotation: Annotation) => void;
   onRemoveAnchor: (anchorId: string) => void;
+  // Called when editing an existing note (not adding a new one)
+  onUpdateNote: (anchorId: string, newContent: string) => void;
 }
 
 type Step =
@@ -21,10 +23,15 @@ type Step =
   | { kind: "box" }
   | { kind: "note" };
 
-export function AnnotationMenu({ menu, onClose, onAdd, onRemoveAnchor }: Props) {
+export function AnnotationMenu({ menu, onClose, onAdd, onRemoveAnchor, onUpdateNote }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const [step, setStep] = useState<Step>({ kind: "root" });
-  const [noteText, setNoteText] = useState("");
+  // If editNoteContent is set, open directly in note-edit mode
+  const [step, setStep] = useState<Step>(
+    menu.editNoteContent !== undefined ? { kind: "note" } : { kind: "root" }
+  );
+  const [noteText, setNoteText] = useState(menu.editNoteContent ?? "");
+  // Track whether this is an edit (true) or new note (false)
+  const isEditingNote = menu.editNoteContent !== undefined;
 
   // Close on outside click
   useEffect(() => {
@@ -166,7 +173,9 @@ export function AnnotationMenu({ menu, onClose, onAdd, onRemoveAnchor }: Props) 
 
       {step.kind === "note" && (
         <>
-          <div className="lm-ann-menu-title">메모 내용</div>
+          <div className="lm-ann-menu-title">
+            {isEditingNote ? "메모 편집" : "메모 내용"}
+          </div>
           <textarea
             className="lm-menu-textarea"
             value={noteText}
@@ -176,20 +185,34 @@ export function AnnotationMenu({ menu, onClose, onAdd, onRemoveAnchor }: Props) 
             autoFocus
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                if (noteText.trim()) addAndClose({ type: "note", content: noteText.trim(), target });
+                if (!noteText.trim()) return;
+                if (isEditingNote) {
+                  onUpdateNote(target, noteText.trim());
+                  onClose();
+                } else {
+                  addAndClose({ type: "note", content: noteText.trim(), target });
+                }
               }
             }}
           />
           <div className="lm-menu-note-actions">
-            <button className="lm-menu-back" onClick={() => setStep({ kind: "root" })}>← 뒤로</button>
+            {!isEditingNote && (
+              <button className="lm-menu-back" onClick={() => setStep({ kind: "root" })}>← 뒤로</button>
+            )}
             <button
               className="lm-menu-confirm"
               disabled={!noteText.trim()}
               onClick={() => {
-                if (noteText.trim()) addAndClose({ type: "note", content: noteText.trim(), target });
+                if (!noteText.trim()) return;
+                if (isEditingNote) {
+                  onUpdateNote(target, noteText.trim());
+                  onClose();
+                } else {
+                  addAndClose({ type: "note", content: noteText.trim(), target });
+                }
               }}
             >
-              확인
+              {isEditingNote ? "저장" : "확인"}
             </button>
           </div>
         </>

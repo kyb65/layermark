@@ -12,6 +12,7 @@ import {
   addAnnotation,
   removeAnchor,
   updateAnchorPosition,
+  updateAnchorOnReconnect,
 } from "./lib/lmm-document";
 import { SvgOverlay } from "./components/SvgOverlay";
 import { AnnotationMenu } from "./components/AnnotationMenu";
@@ -276,22 +277,6 @@ export default function App() {
     const menuX = selectionRect.right - wrapRect.left;
     const menuY = selectionRect.bottom - wrapRect.top + 6;
 
-    // ── Existing anchor hit-test ─────────────────────────────────────────────
-    // If the dragged range overlaps an already-resolved anchor, open its menu
-    // instead of creating a duplicate anchor.
-    // Overlap condition: ranges share at least one code point.
-    const overlapping = resolvedAnchors.find((ra) => {
-      const raEnd = ra.position + ra.length;
-      return selStart < raEnd && selEnd > ra.position;
-    });
-    if (overlapping) {
-      selection.removeAllRanges();
-      setMenu({ anchorId: overlapping.id, x: menuX, y: menuY });
-      setStatus("기존 앵커 선택됨 — 주석을 추가하거나 삭제할 수 있습니다");
-      return;
-    }
-    // ────────────────────────────────────────────────────────────────────────
-
     const domPlain = domPlainRef.current;
     const existingIds = collectAllIds(
       lmmDoc.anchors,
@@ -330,6 +315,20 @@ export default function App() {
 
     // Duplicate guard
     if (isDuplicateAnnotation(lmmDoc, annotation)) {
+      // Special case: note duplicate → open existing note for editing
+      if (annotation.type === "note" && "target" in annotation) {
+        const existingNote = lmmDoc.annotations.find(
+          (a) => a.type === "note" && "target" in a && a.target === annotation.target
+        );
+        if (existingNote && "content" in existingNote) {
+          // Re-open the annotation menu in note-edit mode with the existing content
+          setMenu((prev) =>
+            prev ? { ...prev, editNoteContent: existingNote.content as string } : prev
+          );
+          setStatus("기존 메모를 편집합니다");
+          return;
+        }
+      }
       setStatus("이미 동일한 주석이 있습니다");
       return;
     }
@@ -343,6 +342,26 @@ export default function App() {
     });
     setLmmDoc(newDoc);
     setStatus(`주석 추가: ${annotation.type}`);
+  }
+
+  async function handleUpdateNote(anchorId: string, newContent: string) {
+    if (!folderPath) return;
+    const newDoc = {
+      ...lmmDoc,
+      annotations: lmmDoc.annotations.map((a) =>
+        a.type === "note" && "target" in a && a.target === anchorId
+          ? { ...a, content: newContent }
+          : a
+      ),
+    };
+    const content = await getCurrentContent();
+    await invoke("write_note_pair", {
+      folder: folderPath,
+      content,
+      memo: serializeLmm(newDoc),
+    });
+    setLmmDoc(newDoc);
+    setStatus("메모 업데이트 완료");
   }
 
   async function handleRemoveAnchor(anchorId: string) {
@@ -361,11 +380,17 @@ export default function App() {
 
   // ── Orphan management ───────────────────────────────────────────────────────
 
-  async function handleOrphanReconnect(anchorId: string, candidatePosition: number) {
+  async function handleOrphanReconnect(
+    anchorId: string,
+    candidatePosition: number,
+    candidateText: string
+  ) {
     if (!folderPath) return;
 
-    // Update the anchor's position in the doc so reconcile picks it up as "high"
-    const updatedDoc = updateAnchorPosition(lmmDoc, anchorId, candidatePosition);
+    // Update both position AND exact so resolveAnchor can find the anchor again.
+    // Updating position only caused an infinite Orphan loop: resolveAnchor searches
+    // by exact first, and if exact is gone the anchor stays orphaned regardless of position.
+    const updatedDoc = updateAnchorOnReconnect(lmmDoc, anchorId, candidatePosition, candidateText);
     const content = await getCurrentContent();
     await invoke("write_note_pair", {
       folder: folderPath,
@@ -373,8 +398,8 @@ export default function App() {
       memo: serializeLmm(updatedDoc),
     });
     setLmmDoc(updatedDoc);
-    // reconcile will run via lmmDoc effect
-    setStatus("Orphan 앵커 재연결 완료");
+    // reconcile runs via lmmDoc useEffect → orphan should resolve to high/medium
+    setStatus(`Orphan 앵커 재연결: "${candidateText.slice(0, 20)}"`);
   }
 
   async function handleOrphanDelete(anchorId: string) {
@@ -436,7 +461,7 @@ export default function App() {
                   contentRef={contentRef}
                   lmmDoc={lmmDoc}
                   resolvedAnchors={resolvedAnchors}
-                  onAnchorClick={(m) => setMenu(m)}
+                  onAnchorRightClick={(m) => setMenu(m)}
                 />
               </div>
 
@@ -446,6 +471,7 @@ export default function App() {
                   onClose={() => setMenu(null)}
                   onAdd={handleAddAnnotation}
                   onRemoveAnchor={handleRemoveAnchor}
+                  onUpdateNote={handleUpdateNote}
                 />
               )}
             </div>

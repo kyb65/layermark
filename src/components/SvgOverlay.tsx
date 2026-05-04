@@ -20,10 +20,11 @@ interface Props {
   contentRef: React.RefObject<HTMLElement | null>;
   lmmDoc: LmmDocument;
   resolvedAnchors: ResolvedAnchor[];
-  onAnchorClick: (menu: MenuState) => void;
+  // Right-click on any anchor area opens the annotation menu.
+  onAnchorRightClick: (menu: MenuState) => void;
 }
 
-export function SvgOverlay({ contentRef, lmmDoc, resolvedAnchors, onAnchorClick }: Props) {
+export function SvgOverlay({ contentRef, lmmDoc, resolvedAnchors, onAnchorRightClick }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [instructions, setInstructions] = useState<DrawInstruction[]>([]);
   const [ghosts, setGhosts] = useState<GhostAnchor[]>([]);
@@ -87,16 +88,17 @@ export function SvgOverlay({ contentRef, lmmDoc, resolvedAnchors, onAnchorClick 
     return () => ro.disconnect();
   }, [contentRef, rebuild]);
 
-  function handleSvgClick(e: React.MouseEvent<SVGSVGElement>) {
-    // Find which annotation was clicked by data attribute
+  function handleSvgContextMenu(e: React.MouseEvent<SVGSVGElement>) {
+    // Right-click on an annotated anchor area → open annotation menu.
     const target = e.target as SVGElement;
     const group = target.closest("[data-anchor-id]") as SVGElement | null;
     if (!group) return;
     const anchorId = group.dataset.anchorId;
     if (!anchorId) return;
 
+    e.preventDefault(); // suppress browser context menu
     const svgRect = svgRef.current!.getBoundingClientRect();
-    onAnchorClick({
+    onAnchorRightClick({
       anchorId,
       x: e.clientX - svgRect.left,
       y: e.clientY - svgRect.top,
@@ -119,19 +121,22 @@ export function SvgOverlay({ contentRef, lmmDoc, resolvedAnchors, onAnchorClick 
       width={svgSize.width}
       height={svgSize.height}
       style={{ overflow: "visible", pointerEvents: "none" }}
-      onClick={handleSvgClick}
+      onContextMenu={handleSvgContextMenu}
     >
       {/* Ghost layer: anchors with no annotations yet (bottommost) */}
       {ghosts.map((g) => (
         <g
           key={`ghost-${g.anchorId}`}
           data-anchor-id={g.anchorId}
-          style={{ pointerEvents: "all", cursor: "pointer" }}
-          onClick={(e) => {
+          style={{ pointerEvents: "all", cursor: "context-menu" }}
+          onContextMenu={(e) => {
+            e.preventDefault();
             const svgRect = svgRef.current!.getBoundingClientRect();
-            onAnchorClick({ anchorId: g.anchorId, x: e.clientX - svgRect.left, y: e.clientY - svgRect.top });
+            onAnchorRightClick({ anchorId: g.anchorId, x: e.clientX - svgRect.left, y: e.clientY - svgRect.top });
           }}
         >
+          {/* Hover tooltip */}
+          <title>우클릭으로 주석 추가/수정</title>
           {g.rects.map((r, i) => (
             <rect
               key={i}
@@ -200,9 +205,10 @@ function OverlayGroup({ ins }: { ins: DrawInstruction }) {
     <g
       data-anchor-id={ins.anchorId}
       data-annotation-id={ins.annotationId}
-      style={{ pointerEvents: pe, cursor: "pointer" }}
+      style={{ pointerEvents: pe, cursor: "context-menu" }}
       className={`lm-overlay-group lm-overlay-${ins.type}`}
     >
+      <title>우클릭으로 주석 추가/수정</title>
       {ins.paths.map((p, i) => (
         <path
           key={i}

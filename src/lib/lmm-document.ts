@@ -148,3 +148,20 @@ export function updateAnchorPosition(
     ),
   };
 }
+
+// Reconnect an orphaned anchor to a new text span.
+// Updates both position and exact so resolveAnchor can find it again.
+// Called when the user picks a candidate in the OrphanPanel.
+export function updateAnchorOnReconnect(
+  doc: LmmDocument,
+  anchorId: NodeId,
+  newPosition: number,
+  newExact: string
+): LmmDocument {
+  return {
+    ...doc,
+    anchors: doc.anchors.map((a) =>
+      a.id === anchorId ? { ...a, position: newPosition, exact: newExact } : a
+    ),
+  };
+}

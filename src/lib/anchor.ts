@@ -163,38 +163,75 @@ export function resolveAnchor(
 }
 
 // Find candidate replacement texts near the anchor's original position.
-// Looks for word-like tokens (sequences of non-whitespace chars) within
-// a ±200 code point window of the original position.
+//
+// Strategy: sliding-window similarity search rather than token matching.
+// This handles phrase-level anchors (e.g. "타입스크립트는 정적 타입을 추가한다")
+// that grow or shrink due to insertions/deletions.
+//
+// Steps:
+//   1. Extract a ±300cp region around the original position.
+//   2. Try every substring whose length is within ±30% of exact's length.
+//      (±2cp token approach missed phrases that grew by insertion.)
+//   3. Score each by prefix+suffix context similarity (same as resolveAnchor).
+//   4. Return top 3 by score, deduplicated.
 function findNearbyCandidates(
   anchor: Anchor,
   plainText: string
 ): Array<{ text: string; position: number }> {
   const exactLen = cpLength(anchor.exact);
-  const window = 200;
-  const start = Math.max(0, anchor.position - window);
-  const end = Math.min(cpLength(plainText), anchor.position + window);
-  const region = cpSlice(plainText, start, end);
+  const searchWindow = 300;
+  const regionStart = Math.max(0, anchor.position - searchWindow);
+  const regionEnd = Math.min(cpLength(plainText), anchor.position + exactLen + searchWindow);
+  const plainChars = [...plainText];
 
-  // Tokenize region into word-like segments of similar length (±2 code points)
-  const candidates: Array<{ text: string; position: number }> = [];
-  const tokenRe = /\S+/g;
-  let m: RegExpExecArray | null;
-  while ((m = tokenRe.exec(region)) !== null) {
-    const tokenCp = [...m[0]];
-    const lenDiff = Math.abs(tokenCp.length - exactLen);
-    if (lenDiff <= 2) {
-      candidates.push({
-        text: m[0],
-        position: start + [...region.slice(0, m.index)].length,
-      });
+  // Length range: allow ±30% or ±3cp, whichever is larger
+  const minLen = Math.max(1, exactLen - Math.max(3, Math.floor(exactLen * 0.3)));
+  const maxLen = exactLen + Math.max(3, Math.floor(exactLen * 0.3));
+
+  const prefixLen = cpLength(anchor.prefix);
+  const suffixLen = cpLength(anchor.suffix);
+
+  const scored: Array<{ text: string; position: number; score: number }> = [];
+
+  for (let pos = regionStart; pos < regionEnd; pos++) {
+    for (let len = minLen; len <= maxLen && pos + len <= plainChars.length; len++) {
+      const candidate = plainChars.slice(pos, pos + len).join("");
+
+      // Quick character-set overlap check to prune obviously wrong candidates
+      // (avoids scoring every single substring when exact is long)
+      if (exactLen > 4) {
+        const candidateSet = new Set([...candidate]);
+        const exactSet = new Set([...anchor.exact]);
+        let overlap = 0;
+        for (const ch of candidateSet) if (exactSet.has(ch)) overlap++;
+        const overlapRatio = overlap / Math.max(candidateSet.size, exactSet.size);
+        if (overlapRatio < 0.3) continue;
+      }
+
+      // Score by prefix/suffix context (same logic as resolveAnchor)
+      const actualPrefix = plainChars.slice(Math.max(0, pos - prefixLen), pos).join("");
+      const actualSuffix = plainChars.slice(pos + len, pos + len + suffixLen).join("");
+      const prefixScore = anchor.prefix === "" ? 1 : similarity(actualPrefix, anchor.prefix);
+      const suffixScore = anchor.suffix === "" ? 1 : similarity(actualSuffix, anchor.suffix);
+      const score = (prefixScore + suffixScore) / 2;
+
+      if (score > 0.4) {
+        scored.push({ text: candidate, position: pos, score });
+      }
     }
   }
 
-  // Sort by distance to original position, take top 3
-  candidates.sort((a, b) =>
-    Math.abs(a.position - anchor.position) - Math.abs(b.position - anchor.position)
-  );
-  return candidates.slice(0, 3);
+  // Deduplicate by position (keep best score per position)
+  const byPos = new Map<number, { text: string; position: number; score: number }>();
+  for (const c of scored) {
+    const existing = byPos.get(c.position);
+    if (!existing || c.score > existing.score) byPos.set(c.position, c);
+  }
+
+  return [...byPos.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(({ text, position }) => ({ text, position }));
 }
 
 function scoreToConfidence(contextScore: number, positionMatches: boolean): ConfidenceLevel {

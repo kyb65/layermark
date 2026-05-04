@@ -13,4 +13,6 @@ export interface MenuState {
   anchorId: string;
   x: number;
   y: number;
+  // When set, AnnotationMenu opens directly in note-edit mode with this content.
+  editNoteContent?: string;
 }

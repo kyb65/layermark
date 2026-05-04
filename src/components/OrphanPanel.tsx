@@ -20,8 +20,9 @@ interface Props {
   orphans: OrphanInfo[];
   isOpen: boolean;
   onToggle: () => void;
-  // User chose to reconnect an orphan to a specific candidate position.
-  onReconnect: (anchorId: string, candidatePosition: number) => void;
+  // User chose to reconnect an orphan to a specific candidate.
+  // candidateText: the new exact value to store (replaces the old exact).
+  onReconnect: (anchorId: string, candidatePosition: number, candidateText: string) => void;
   // User chose to delete an orphan permanently.
   onDelete: (anchorId: string) => void;
   // User deferred — keeps orphan in panel, does nothing else.
@@ -93,7 +94,7 @@ export function OrphanPanel({
 
 interface ItemProps {
   orphan: OrphanInfo;
-  onReconnect: (anchorId: string, candidatePosition: number) => void;
+  onReconnect: (anchorId: string, candidatePosition: number, candidateText: string) => void;
   onDelete: (anchorId: string) => void;
 }
 
@@ -124,7 +125,7 @@ function OrphanItem({ orphan, onReconnect, onDelete }: ItemProps) {
                 </span>
                 <button
                   className="lm-btn-small lm-btn-reconnect"
-                  onClick={() => onReconnect(anchor.id, c.position)}
+                  onClick={() => onReconnect(anchor.id, c.position, c.text)}
                   title="이 후보로 재연결"
                 >
                   연결
