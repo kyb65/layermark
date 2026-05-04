@@ -1,3 +1,4 @@
+// src/App.tsx — Phase 2: SVG overlay rendering
 import { useState, useRef, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -7,9 +8,14 @@ import {
   serializeLmm,
   newLmmDocument,
   addAnchor,
+  addAnnotation,
+  removeAnchor,
   updateAnchorPosition,
 } from "./lib/lmm-document";
-import type { LmmDocument, AnchorMatch } from "./types/lmm";
+import { SvgOverlay } from "./components/SvgOverlay";
+import { AnnotationMenu } from "./components/AnnotationMenu";
+import type { LmmDocument, AnchorMatch, Annotation } from "./types/lmm";
+import type { ResolvedAnchor, MenuState } from "./types/overlay";
 import "./App.css";
 
 interface NotePair {
@@ -18,25 +24,13 @@ interface NotePair {
   memo: string | null;
 }
 
-interface ResolvedAnchor {
-  id: string;
-  position: number;
-  length: number;
-  confidence: "high" | "medium" | "low";
-}
+// ── Plain text helpers ────────────────────────────────────────────────────────
 
 interface TextNodeEntry {
   node: Text;
   start: number;
   end: number;
-  chars: string[];
 }
-
-const HIGHLIGHT_COLORS: Record<string, string> = {
-  high:   "rgba(250, 199, 117, 0.45)",
-  medium: "rgba(250, 199, 117, 0.28)",
-  low:    "rgba(220, 80, 80, 0.25)",
-};
 
 function buildTextNodeEntries(container: HTMLElement): TextNodeEntry[] {
   const entries: TextNodeEntry[] = [];
@@ -45,7 +39,7 @@ function buildTextNodeEntries(container: HTMLElement): TextNodeEntry[] {
   while (walker.nextNode()) {
     const node = walker.currentNode as Text;
     const chars = [...(node.textContent ?? "")];
-    entries.push({ node, start: offset, end: offset + chars.length, chars });
+    entries.push({ node, start: offset, end: offset + chars.length });
     offset += chars.length;
   }
   return entries;
@@ -71,6 +65,8 @@ function extractDomPlainText(container: HTMLElement): string {
   return text;
 }
 
+// ── App ───────────────────────────────────────────────────────────────────────
+
 export default function App() {
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [htmlContent, setHtmlContent] = useState<string>("");
@@ -78,6 +74,7 @@ export default function App() {
   const [resolvedAnchors, setResolvedAnchors] = useState<ResolvedAnchor[]>([]);
   const [status, setStatus] = useState<string>("노트 폴더를 열어 시작하세요");
   const [orphanCount, setOrphanCount] = useState(0);
+  const [menu, setMenu] = useState<MenuState | null>(null);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const domPlainRef = useRef<string>("");
@@ -150,14 +147,10 @@ export default function App() {
     const range = selection.getRangeAt(0);
 
     const selStart = domRangeToPlainOffset(
-      entries,
-      range.startContainer as Text,
-      range.startOffset
+      entries, range.startContainer as Text, range.startOffset
     );
     const selEnd = domRangeToPlainOffset(
-      entries,
-      range.endContainer as Text,
-      range.endOffset
+      entries, range.endContainer as Text, range.endOffset
     );
 
     if (selStart === -1 || selEnd === -1 || selStart >= selEnd) return;
@@ -171,18 +164,15 @@ export default function App() {
     try {
       const anchor = await createAnchor(domPlain, selStart, selEnd, existingIds);
       const newDoc = addAnchor(lmmDoc, anchor);
-
+      const content = await getCurrentContent();
       await invoke("write_note_pair", {
         folder: folderPath,
-        content: await getCurrentContent(),
+        content,
         memo: serializeLmm(newDoc),
       });
-
       setLmmDoc(newDoc);
       reconcile(newDoc, domPlain);
-      setStatus(
-        `앵커 생성: "${selectedText.slice(0, 20)}${selectedText.length > 20 ? "…" : ""}"`
-      );
+      setStatus(`앵커 생성: "${selectedText.slice(0, 20)}${selectedText.length > 20 ? "…" : ""}"`);
       selection.removeAllRanges();
     } catch (e) {
       setStatus(`앵커 생성 실패: ${e}`);
@@ -195,26 +185,40 @@ export default function App() {
     return pair.content;
   }
 
-  useEffect(() => {
-    if (!contentRef.current) return;
-
-    const existing = contentRef.current.querySelectorAll("mark[data-anchor-id]");
-    existing.forEach((el) => {
-      const parent = el.parentNode!;
-      while (el.firstChild) parent.insertBefore(el.firstChild, el);
-      parent.removeChild(el);
+  async function handleAddAnnotation(annotation: Annotation) {
+    if (!folderPath) return;
+    const newDoc = addAnnotation(lmmDoc, annotation);
+    const content = await getCurrentContent();
+    await invoke("write_note_pair", {
+      folder: folderPath,
+      content,
+      memo: serializeLmm(newDoc),
     });
+    setLmmDoc(newDoc);
+    setStatus(`주석 추가: ${annotation.type}`);
+  }
 
-    if (resolvedAnchors.length === 0) return;
+  async function handleRemoveAnchor(anchorId: string) {
+    if (!folderPath) return;
+    const newDoc = removeAnchor(lmmDoc, anchorId);
+    const content = await getCurrentContent();
+    await invoke("write_note_pair", {
+      folder: folderPath,
+      content,
+      memo: serializeLmm(newDoc),
+    });
+    setLmmDoc(newDoc);
+    reconcile(newDoc, domPlainRef.current);
+    setStatus("앵커 삭제됨");
+  }
 
-    for (const ra of resolvedAnchors) {
-      try {
-        injectMark(contentRef.current!, ra);
-      } catch {
-        // non-fatal
-      }
+  // Re-reconcile when lmmDoc changes (e.g. after annotation added)
+  useEffect(() => {
+    if (domPlainRef.current) {
+      reconcile(lmmDoc, domPlainRef.current);
     }
-  }, [resolvedAnchors]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lmmDoc]);
 
   return (
     <div className="lm-app">
@@ -231,80 +235,59 @@ export default function App() {
         {orphanCount > 0 && (
           <span className="lm-orphan-badge">⚠ 끊긴 앵커 {orphanCount}개</span>
         )}
-        <div className="lm-anchor-count">앵커 {lmmDoc.anchors.length}개</div>
+        <div className="lm-spacer" />
+        <div className="lm-anchor-count">
+          앵커 {lmmDoc.anchors.length}  주석 {lmmDoc.annotations.length}
+        </div>
       </div>
 
       <div className="lm-content-wrap">
         {!folderPath ? (
           <div className="lm-empty">
             <p>노트 폴더를 열어 시작하세요</p>
-            <p className="lm-empty-sub">
-              폴더 안에 content.lm 파일이 있어야 합니다
-            </p>
+            <p className="lm-empty-sub">폴더 안에 content.lm 파일이 있어야 합니다</p>
             <button className="lm-btn-primary lm-btn-lg" onClick={openFolder}>
               폴더 열기
             </button>
           </div>
         ) : (
-          <div
-            ref={contentRef}
-            className="lm-markdown-body"
-            onMouseUp={handleMouseUp}
-            dangerouslySetInnerHTML={{ __html: htmlContent }}
-          />
+          <div className="lm-overlay-wrap">
+            {/* Shared SVG defs */}
+            <svg width="0" height="0" style={{ position: "absolute", overflow: "hidden" }}>
+              <defs>
+                <filter id="lm-blur" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="2" />
+                </filter>
+              </defs>
+            </svg>
+
+            <div
+              ref={contentRef}
+              className="lm-markdown-body"
+              onMouseUp={handleMouseUp}
+              dangerouslySetInnerHTML={{ __html: htmlContent }}
+            />
+
+            <div className="lm-svg-wrap">
+              <SvgOverlay
+                contentRef={contentRef}
+                lmmDoc={lmmDoc}
+                resolvedAnchors={resolvedAnchors}
+                onAnchorClick={(m) => setMenu(m)}
+              />
+            </div>
+
+            {menu && (
+              <AnnotationMenu
+                menu={menu}
+                onClose={() => setMenu(null)}
+                onAdd={handleAddAnnotation}
+                onRemoveAnchor={handleRemoveAnchor}
+              />
+            )}
+          </div>
         )}
       </div>
-
-      {lmmDoc.anchors.length > 0 && (
-        <div className="lm-anchor-panel">
-          <div className="lm-panel-title">앵커 목록 (Phase 1 디버그)</div>
-          {lmmDoc.anchors.map((a) => {
-            const resolved = resolvedAnchors.find((r) => r.id === a.id);
-            return (
-              <div
-                key={a.id}
-                className={`lm-anchor-item lm-conf-${resolved?.confidence ?? "orphan"}`}
-              >
-                <span className="lm-anchor-exact">"{a.exact}"</span>
-                <span className="lm-anchor-id">{a.id}</span>
-                <span className="lm-anchor-conf">
-                  {resolved ? resolved.confidence : "orphan"}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
-}
-
-function injectMark(container: HTMLElement, ra: ResolvedAnchor) {
-  const entries = buildTextNodeEntries(container);
-  const raEnd = ra.position + ra.length;
-
-  for (const entry of entries) {
-    if (entry.end <= ra.position || entry.start >= raEnd) continue;
-
-    const localStart = Math.max(0, ra.position - entry.start);
-    const localEnd   = Math.min(entry.chars.length, raEnd - entry.start);
-
-    const before = entry.chars.slice(0, localStart).join("");
-    const marked = entry.chars.slice(localStart, localEnd).join("");
-    const after  = entry.chars.slice(localEnd).join("");
-
-    const mark = document.createElement("mark");
-    mark.dataset.anchorId = ra.id;
-    mark.textContent = marked;
-    mark.style.backgroundColor = HIGHLIGHT_COLORS[ra.confidence];
-    mark.style.borderRadius = "2px";
-    mark.title = `${ra.id} (${ra.confidence})`;
-
-    const parent = entry.node.parentNode!;
-    if (before) parent.insertBefore(document.createTextNode(before), entry.node);
-    parent.insertBefore(mark, entry.node);
-    if (after)  parent.insertBefore(document.createTextNode(after), entry.node);
-    parent.removeChild(entry.node);
-    break;
-  }
 }

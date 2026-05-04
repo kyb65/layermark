@@ -225,3 +225,167 @@ html, body, #root {
   width: 52px;
   text-align: right;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Phase 2 additions — SVG overlay + annotation menu
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Spacer ── */
+.lm-spacer { flex: 1; }
+
+/* ── Overlay container ── */
+/* lm-overlay-wrap: positions markdown body + SVG in the same space */
+.lm-overlay-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── SVG wrapper ── */
+/* Sits on top of the markdown body, pointer-events off by default  */
+/* (individual groups opt back in with pointer-events: stroke/all)  */
+.lm-svg-wrap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.lm-svg-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+/* ── Annotation context menu ── */
+.lm-ann-menu {
+  position: absolute;
+  z-index: 200;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 0;
+  min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  user-select: none;
+}
+
+.lm-ann-menu-title {
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 4px 12px 6px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.lm-ann-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 14px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lm-ann-menu button:hover {
+  background: var(--accent-dim);
+}
+
+.lm-ann-menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.lm-menu-icon {
+  font-size: 13px;
+  width: 18px;
+  text-align: center;
+  color: var(--accent);
+  font-family: "D2Coding", monospace;
+}
+
+.lm-menu-danger {
+  color: #e07070 !important;
+}
+
+.lm-menu-back {
+  color: var(--text-3) !important;
+  font-size: 12px !important;
+  padding-top: 8px !important;
+  border-top: 1px solid var(--border) !important;
+  margin-top: 2px !important;
+}
+
+/* Color dot for highlight menu */
+.lm-menu-color-btn {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.lm-color-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.lm-color-dot[data-color="yellow"] { background: rgba(250, 210, 80, 0.8); }
+.lm-color-dot[data-color="green"]  { background: rgba(100, 200, 130, 0.8); }
+.lm-color-dot[data-color="pink"]   { background: rgba(240, 120, 160, 0.8); }
+.lm-color-dot[data-color="blue"]   { background: rgba(80, 160, 240, 0.8); }
+
+/* Note textarea */
+.lm-menu-textarea {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 0 12px 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  padding: 6px 8px;
+  resize: none;
+  outline: none;
+  line-height: 1.5;
+}
+.lm-menu-textarea:focus {
+  border-color: var(--accent);
+}
+
+.lm-menu-note-actions {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 6px 2px;
+}
+
+.lm-menu-confirm {
+  background: var(--accent) !important;
+  color: #fff !important;
+  border-radius: 4px !important;
+  padding: 4px 12px !important;
+}
+.lm-menu-confirm:disabled {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+}
+.lm-menu-confirm:not(:disabled):hover {
+  opacity: 0.85 !important;
+}
+
+/* ── Phase 1 debug panel → hidden in Phase 2 ── */
+/* Keep the CSS classes for now but the panel is no longer rendered */
+
