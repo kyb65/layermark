@@ -7,7 +7,14 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import type { LmmDocument } from "../types/lmm";
 import type { ResolvedAnchor, MenuState } from "../types/overlay";
 import { getLineRects, buildDrawInstruction } from "../lib/overlay";
-import type { DrawInstruction } from "../lib/overlay";
+import type { DrawInstruction, LineRect } from "../lib/overlay";
+
+// Ghost: anchor with no annotations — shows a faint indicator so the user
+// knows the anchor exists and can click it to add an annotation.
+interface GhostAnchor {
+  anchorId: string;
+  rects: LineRect[];
+}
 
 interface Props {
   contentRef: React.RefObject<HTMLElement | null>;
@@ -19,6 +26,7 @@ interface Props {
 export function SvgOverlay({ contentRef, lmmDoc, resolvedAnchors, onAnchorClick }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [instructions, setInstructions] = useState<DrawInstruction[]>([]);
+  const [ghosts, setGhosts] = useState<GhostAnchor[]>([]);
   const [svgSize, setSvgSize] = useState({ width: 0, height: 0 });
   // Track open note bubble IDs
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
@@ -50,6 +58,21 @@ export function SvgOverlay({ contentRef, lmmDoc, resolvedAnchors, onAnchorClick 
     }
 
     setInstructions(instrs);
+
+    // Ghost: anchors that have no annotation targeting them
+    const annotatedAnchorIds = new Set(
+      lmmDoc.annotations
+        .filter((a) => "target" in a)
+        .map((a) => (a as { target: string }).target)
+    );
+    const ghostList: GhostAnchor[] = [];
+    for (const ra of resolvedAnchors) {
+      if (!annotatedAnchorIds.has(ra.id)) {
+        const rects = getLineRects(container as HTMLElement, ra, containerRect);
+        if (rects.length > 0) ghostList.push({ anchorId: ra.id, rects });
+      }
+    }
+    setGhosts(ghostList);
   }, [contentRef, lmmDoc, resolvedAnchors]);
 
   // Rebuild on data or layout change
@@ -98,6 +121,45 @@ export function SvgOverlay({ contentRef, lmmDoc, resolvedAnchors, onAnchorClick 
       style={{ overflow: "visible", pointerEvents: "none" }}
       onClick={handleSvgClick}
     >
+      {/* Ghost layer: anchors with no annotations yet (bottommost) */}
+      {ghosts.map((g) => (
+        <g
+          key={`ghost-${g.anchorId}`}
+          data-anchor-id={g.anchorId}
+          style={{ pointerEvents: "all", cursor: "pointer" }}
+          onClick={(e) => {
+            const svgRect = svgRef.current!.getBoundingClientRect();
+            onAnchorClick({ anchorId: g.anchorId, x: e.clientX - svgRect.left, y: e.clientY - svgRect.top });
+          }}
+        >
+          {g.rects.map((r, i) => (
+            <rect
+              key={i}
+              x={r.x}
+              y={r.y}
+              width={r.width}
+              height={r.height}
+              fill="var(--accent)"
+              opacity={0.08}
+              rx={2}
+            />
+          ))}
+          {g.rects.map((r, i) => (
+            <line
+              key={`u-${i}`}
+              x1={r.x}
+              y1={r.baseline + 1}
+              x2={r.x + r.width}
+              y2={r.baseline + 1}
+              stroke="var(--accent)"
+              strokeWidth={1}
+              opacity={0.35}
+              strokeDasharray="3 2"
+            />
+          ))}
+        </g>
+      ))}
+
       {/* Render highlights first (bottom layer) */}
       {instructions
         .filter((ins) => ins.type === "highlight")

@@ -155,6 +155,13 @@ export default function App() {
 
     if (selStart === -1 || selEnd === -1 || selStart >= selEnd) return;
 
+    // 드래그 끝 위치를 메뉴 좌표로 저장 (overlay-wrap 기준 상대 좌표)
+    const selectionRect = range.getBoundingClientRect();
+    const wrapEl = contentRef.current.parentElement!;
+    const wrapRect = wrapEl.getBoundingClientRect();
+    const menuX = selectionRect.right - wrapRect.left;
+    const menuY = selectionRect.bottom - wrapRect.top + 6;
+
     const domPlain = domPlainRef.current;
     const existingIds = collectAllIds(
       lmmDoc.anchors,
@@ -174,6 +181,8 @@ export default function App() {
       reconcile(newDoc, domPlain);
       setStatus(`앵커 생성: "${selectedText.slice(0, 20)}${selectedText.length > 20 ? "…" : ""}"`);
       selection.removeAllRanges();
+      // 앵커 생성 직후 annotation 메뉴 자동 오픈
+      setMenu({ anchorId: anchor.id, x: menuX, y: menuY });
     } catch (e) {
       setStatus(`앵커 생성 실패: ${e}`);
     }
