@@ -719,7 +719,20 @@ Obsidian, Logseq 등이 `.lmm` 포맷을 플러그인으로 지원하는 것이 
 | SVG 오버레이 | ✅ Phase 2 완료 |
 | Orphan 관리 UI | ⬜ Phase 3 |
 | Connection 렌더링 | ⬜ Phase 4 |
+
+## GitHub
+
+- Repo: https://github.com/kyb65/layermark
+- Remote: origin → https://github.com/kyb65/layermark.git
+- Branch: master
+- Credential: Windows Credential Manager (git:https://github.com)
 | 번들링(.lmb) | ⬜ Phase 5 |
+
+## Phase 2 UX 핫픽스 (2026-05)
+
+- 앵커 ghost 표시: annotation 없는 앵커 → 반투명 배경 + 점선 밑줄
+- 드래그 후 annotation 메뉴 자동 오픈 (range.getBoundingClientRect() 기준)
+- 검증 완료: 실기기에서 전체 annotation 타입 정상 작동 확인
 
 ---
 
