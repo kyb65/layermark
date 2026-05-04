@@ -736,15 +736,33 @@ Obsidian, Logseq 등이 `.lmm` 포맷을 플러그인으로 지원하는 것이 
 
 ## Phase 3 핫픽스 (2026-05)
 
-- layout fix: lm-body min-height:0 + lm-content-area padding:40px + lm-overlay-wrap height 제거
+### 1차 수정
+- layout: lm-body min-height:0 + lm-content-area padding:40px + lm-overlay-wrap height 제거
   → Orphan 패널 추가로 인한 스크롤바 위치 오류 수정
 - duplicate annotation guard 로직 교체
-  → 기존: style/color를 Record<string,unknown> 캐스팅 + || 조건으로 처리 (highlight 중복 허용 버그)
+  → 기존: style/color를 Record<string,unknown> + || 조건 (highlight 중복 허용 버그)
   → 변경: annotation 타입별 switch로 명시적 처리
-- highlight SVG pointerEvents: "stroke" → "fill"로 수정 (fill 영역 클릭 불가 버그)
-- 드래그 시 기존 앵커와 겹치면 새 앵커 생성 대신 기존 앵커 메뉴 오픈
-  → 같은 텍스트 반복 드래그로 중복 앵커 생성되던 근본 원인 차단
-- 검증 완료: 실기기에서 Orphan 패널, 파일 감시, 중복 방지 정상 작동 확인
+- highlight SVG pointerEvents "stroke" → "fill" (fill 영역 클릭 불가 버그)
+- 드래그 overlap 감지: 기존 앵커 범위 재드래그 시 새 앵커 대신 메뉴 오픈
+
+### 2차 수정 (검증 후 추가 발견)
+- Orphan 재연결 무한 루프: position만 교체 → exact+position 동시 교체(updateAnchorOnReconnect)
+  → exact가 사라진 상태에서 position만 바꿔도 resolveAnchor가 exact로 검색하므로 다시 Orphan
+- 후보 예측 실패: ±2cp 토큰 길이 매칭 → 슬라이딩 윈도우 + prefix/suffix 유사도 스코어링
+  → 구(phrase) 단위 앵커의 삽입/삭제 변경 감지 가능 (예: "뿅" 삽입)
+- UX 구조 변경: 좌클릭=드래그(새 앵커 전용), 우클릭=annotation 메뉴
+  → SvgOverlay onClick → onContextMenu, cursor: context-menu
+  → SVG title 툴팁 "우클릭으로 주석 추가/수정"
+  → overlap 감지 인터셉트 제거 (부분 선택 드래그 불가 문제)
+- note 중복 시도 → 기존 note 편집 모드로 전환
+  → AnnotationMenu: editNoteContent prop, isEditingNote 분기, 저장 시 onUpdateNote 호출
+  → App.tsx: handleUpdateNote로 content in-place patch
+
+### 검증 완료 항목
+- Orphan 재연결 후 패널에서 해제됨
+- 우클릭으로 annotation 메뉴 접근 가능
+- 하이라이트 영역 부분 선택 드래그 정상 작동
+- note 두 번째 시도 시 편집 창 오픈
 
 ---
 

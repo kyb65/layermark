@@ -309,3 +309,31 @@ Phase 4: connection 렌더링 — arrow/line + elkjs 자동 배치
 - 결국 사용자가 같은 텍스트를 다시 드래그 → 새 앵커 생성 → 중복 덧씌움
 - `handleMouseUp`에 기존 앵커 overlap 감지 로직 추가:
   selStart < raEnd && selEnd > ra.position → 새 앵커 대신 기존 메뉴 오픈
+
+### Phase 3 2차 핫픽스 (검증 후 추가 발견)
+
+#### Orphan 재연결 무한 루프
+- 원인: `updateAnchorPosition`으로 position만 교체
+  → `resolveAnchor`는 exact로 먼저 검색하므로 exact가 사라진 경우 position과 무관하게 Orphan 유지
+- 수정: `updateAnchorOnReconnect` 추가 → exact + position 동시 교체
+- OrphanPanel `onReconnect` 시그니처에 `candidateText` 추가
+
+#### 후보 예측 실패 (구 단위 앵커)
+- 원인: `findNearbyCandidates`가 ±2cp 토큰 길이 기준으로 필터링
+  → "타입스크립트는 정적 타입을 추가한다" 같은 구 단위 앵커에 글자 하나가 삽입되면 길이 범위 초과
+- 수정: 슬라이딩 윈도우 + prefix/suffix 유사도 스코어링으로 교체
+  → ±30% 길이 허용, 문자집합 overlap 사전 필터, score > 0.4 임계값, 중복 제거 후 top 3
+
+#### UX 구조 변경: 좌클릭/우클릭 분리
+- 배경: highlight fill 영역 클릭을 허용하면 좌클릭 드래그와 annotation 메뉴가 충돌
+- 수정: 좌클릭 드래그 = 새 앵커 생성 전용 / 우클릭 = annotation 메뉴
+  - SvgOverlay: onClick → onContextMenu (e.preventDefault로 브라우저 메뉴 차단)
+  - cursor: context-menu, SVG `<title>` 툴팁 "우클릭으로 주석 추가/수정"
+  - 기존 overlap 감지 인터셉트 제거 (부분 선택 드래그 불가 문제 해결)
+
+#### note 중복 → 편집 모드 전환
+- `isDuplicateAnnotation`에서 note 중복 감지 시 기존 content를 `editNoteContent`로 전달
+- `MenuState`에 `editNoteContent?: string` 필드 추가
+- `AnnotationMenu`: `isEditingNote` 플래그로 제목("메모 편집"), 버튼("저장"), 뒤로가기 버튼 숨김 분기
+- `handleUpdateNote`: 기존 note content를 in-place patch (새 annotation 추가 아님)
+
