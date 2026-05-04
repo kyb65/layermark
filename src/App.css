@@ -238,7 +238,7 @@ html, body, #root {
 .lm-overlay-wrap {
   position: relative;
   width: 100%;
-  height: 100%;
+  /* height intentionally omitted — SVG overlay uses ResizeObserver */
 }
 
 /* ── SVG wrapper ── */
@@ -398,14 +398,16 @@ html, body, #root {
 .lm-body {
   display: flex;
   flex: 1;
+  min-height: 0;   /* required: lets flex child shrink below content height */
   overflow: hidden;
 }
 
-/* Content area: takes remaining width */
+/* Content area: takes remaining width, scrolls independently */
 .lm-content-area {
   flex: 1;
   overflow-y: auto;
   min-width: 0;
+  padding: 40px;
 }
 
 /* ── Orphan panel ─────────────────────────────────────── */
